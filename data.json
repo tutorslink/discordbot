@@ -1,0 +1,34 @@
+{
+  "nextTicketId": 1,
+  "subjects": [
+    "IGCSE Accounting",
+    "IGCSE Maths",
+    "IGCSE Add Maths"
+  ],
+  "subjectTutors": {
+    "IGCSE Maths": [
+      "742420325559435375",
+      "873095080938975232"
+    ]
+  },
+  "initMessage": "Hello, thanks for requesting a tutor for **{subject}**. Please tell us your topic, availability, timezone. Do not post contact info.",
+  "tickets": {},
+  "cooldowns": {},
+  "sticky": null,
+  "createAds": {},
+  "defaultEmbedColor": null,
+  "tutorProfiles": {},
+  "studentAssignments": {},
+  "pendingReviews": [],
+  "reviewConfig": {
+    "delaySeconds": 1296000
+  },
+  "bumpLeaderboard": {},
+  "_modmail_helpers": {},
+  "modmail": {
+    "byUser": {},
+    "byChannel": {},
+    "pending": {},
+    "nextId": 1
+  }
+}
