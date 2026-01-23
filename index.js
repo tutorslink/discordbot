@@ -92,6 +92,25 @@ if (!BOT_TOKEN || !GUILD_ID || !STAFF_ROLE_ID || !FIND_A_TUTOR_CHANNEL_ID || !TU
   process.exit(1);
 }
 
+// --- CreateAd categorisation (posts to find-a-tutor AND a category channel) ---
+// Categories are fixed (not env-driven) per user request.
+const CREATEAD_LEVEL_CHANNELS = {
+  university: '1458552573999972586',
+  a_level: '1458552889130614814',
+  igcse: '1458552485433311323',
+  below_igcse: '1458552366508019956',
+  language: '1464287197560701162',
+  other: '1458552927454105832'
+};
+const CREATEAD_LEVEL_LABELS = {
+  university: 'University',
+  a_level: 'A level',
+  igcse: 'IGCSE',
+  below_igcse: 'Below IGCSE',
+  language: 'Language',
+  other: 'Other'
+};
+
 const DATA_FILE = './data.json';
 let db = {
   nextTicketId: 1,
@@ -123,6 +142,18 @@ function clampLabel(s, max = 45) {
   if (typeof s !== 'string') return '';
   if (s.length <= max) return s;
   return s.slice(0, Math.max(0, max - 3)) + '...';
+}
+
+function normalizeCreateAdLevelKey(raw) {
+  const v = String(raw || '').trim().toLowerCase();
+  if (!v) return null;
+  if (CREATEAD_LEVEL_CHANNELS[v]) return v;
+  // allow some common aliases
+  if (v === 'university' || v === 'uni') return 'university';
+  if (v === 'a level' || v === 'alevel' || v === 'a-level') return 'a_level';
+  if (v === 'below igcse' || v === 'below_igcse' || v === 'below-igcse') return 'below_igcse';
+  if (v === 'language' || v === 'lang') return 'language';
+  return null;
 }
 
 // Try to fetch a user but fail fast (timeout) to avoid interaction timeouts
@@ -847,6 +878,7 @@ client.on('interactionCreate', async (interaction) => {
       if (custom && custom.startsWith('open_createad_modal|')) {
         const parts = custom.split('|');
         const requester = parts[1];
+        const levelKey = normalizeCreateAdLevelKey(parts[2]) || 'other';
         if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
           return interaction.reply({ content: 'Only the command invoker or staff may open this modal.', ephemeral: true });
         }
@@ -886,7 +918,16 @@ client.on('interactionCreate', async (interaction) => {
           const tutorDetailsInput = new TextInputBuilder().setCustomId('ad_tutor_details').setLabel(clampLabel('Tutor Details & Pricing')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Languages: \nClass Type: \nClass Duration: \nClasses/week: \nClasses/month: \nPrice per Class (USD) for Group classes: \nTime zone:', 1000));
           const optionalFieldsInput = new TextInputBuilder().setCustomId('ad_optional_fields').setLabel(clampLabel('Optional: Message, Testimonials, Payment, Color, Role')).setStyle(TextInputStyle.Paragraph).setRequired(false).setValue(clampLabel('Message from tutor:\nStudent Testimonials:\nPayment Terms: 100% upfront before classes begin\nColor: \nRole ID: ', 1000));
 
-          const modal = new ModalBuilder().setCustomId(`createad_modal|${interaction.id}`).setTitle('Create Ad Details').addComponents(subjectLabel, tutorLabel, new ActionRowBuilder().addComponents(subjectDetailsInput), new ActionRowBuilder().addComponents(tutorDetailsInput), new ActionRowBuilder().addComponents(optionalFieldsInput));
+          const modal = new ModalBuilder()
+            .setCustomId(`createad_modal|${interaction.id}|${levelKey}`)
+            .setTitle('Create Ad Details')
+            .addComponents(
+              subjectLabel,
+              tutorLabel,
+              new ActionRowBuilder().addComponents(subjectDetailsInput),
+              new ActionRowBuilder().addComponents(tutorDetailsInput),
+              new ActionRowBuilder().addComponents(optionalFieldsInput)
+            );
           await interaction.showModal(modal);
         } catch (err) {
           console.error('open_createad_modal failed', err);
@@ -1435,7 +1476,9 @@ if (custom.startsWith('open_close_modal|')) {
 
       // createad modal submit
         if (interaction.customId && interaction.customId.startsWith('createad_modal|')) {
-            const interactionId = interaction.customId.split('|')[1];
+            const parts = interaction.customId.split('|');
+            const interactionId = parts[1];
+            const levelKey = normalizeCreateAdLevelKey(parts[2]) || 'other';
             
             if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can create ads.', ephemeral: true });
 
@@ -1602,12 +1645,28 @@ if (custom.startsWith('open_close_modal|')) {
                 return null; 
             });
             
+            // Also post to the selected category channel
+            let categorySent = null;
+            try {
+                const categoryChannelId = CREATEAD_LEVEL_CHANNELS[levelKey] || CREATEAD_LEVEL_CHANNELS.other;
+                const categoryCh = await interaction.guild.channels.fetch(categoryChannelId).catch(() => null);
+                if (categoryCh) {
+                    categorySent = await categoryCh.send({ content: messageContent, embeds: [embed], components: [row] }).catch(() => null);
+                }
+            } catch (e) {
+                console.warn('createad category post failed', e);
+                try { notifyStaffError(e, 'createad category post', interaction); } catch (err) {}
+            }
+            
             if (sent) {
                 if (!db.createAds) db.createAds = {};
                 db.createAds[sent.id] = { 
                     channelId: findCh.id, 
                     embed: { title: subject, description: message, color: colorVal || db.defaultEmbedColor },
-                    tutorId: selectedTutorId 
+                    tutorId: selectedTutorId,
+                    level: levelKey,
+                    categoryChannelId: CREATEAD_LEVEL_CHANNELS[levelKey] || CREATEAD_LEVEL_CHANNELS.other,
+                    categoryMessageId: categorySent ? categorySent.id : null
                 };
                 saveDB();
 
@@ -1653,7 +1712,8 @@ if (custom.startsWith('open_close_modal|')) {
                 try { notifyStaffError(e, 'repostSticky after createad', interaction); } catch (err) {}
             }
 
-            return interaction.editReply({ content: 'Ad posted.' });
+            const levelLabel = CREATEAD_LEVEL_LABELS[levelKey] || 'Other';
+            return interaction.editReply({ content: categorySent ? `Ad posted in find-a-tutor and **${levelLabel}**.` : `Ad posted in find-a-tutor. (Could not post in **${levelLabel}** category channel.)` });
         }
 
       // editad modal submit
@@ -2004,6 +2064,63 @@ if (custom.startsWith('open_close_modal|')) {
 
     // Select menus and other interaction types
     if (interaction.isStringSelectMenu()) {
+      // CreateAd level/category select (before opening the modal)
+      // customId: createad_level|<requesterUserId>
+      if (interaction.customId && interaction.customId.startsWith('createad_level|')) {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true });
+        const parts = interaction.customId.split('|');
+        const requester = parts[1];
+        if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
+          return interaction.reply({ content: 'Only the command invoker or staff may set the category.', ephemeral: true });
+        }
+
+        const chosenRaw = interaction.values && interaction.values[0];
+        const levelKey = normalizeCreateAdLevelKey(chosenRaw);
+        if (!levelKey) {
+          return interaction.reply({ content: 'Invalid category selected.', ephemeral: true });
+        }
+
+        const levelLabel = CREATEAD_LEVEL_LABELS[levelKey] || 'Selected';
+        const openButton = new ButtonBuilder()
+          .setCustomId(`open_createad_modal|${requester}|${levelKey}`)
+          .setLabel('Open Create Ad Modal')
+          .setStyle(ButtonStyle.Primary);
+
+        // Keep the select menu so staff can change their mind
+        const levelOptions = [
+          new StringSelectMenuOptionBuilder().setLabel('University').setValue('university'),
+          new StringSelectMenuOptionBuilder().setLabel('A level').setValue('a_level'),
+          new StringSelectMenuOptionBuilder().setLabel('IGCSE').setValue('igcse'),
+          new StringSelectMenuOptionBuilder().setLabel('Below IGCSE').setValue('below_igcse'),
+          new StringSelectMenuOptionBuilder().setLabel('Language').setValue('language'),
+          new StringSelectMenuOptionBuilder().setLabel('Other').setValue('other')
+        ].map(opt => {
+          try { if (opt.data?.value === levelKey) opt.setDefault(true); } catch (e) {}
+          return opt;
+        });
+
+        const levelSelect = new StringSelectMenuBuilder()
+          .setCustomId(`createad_level|${requester}`)
+          .setPlaceholder('Select subject level category')
+          .addOptions(levelOptions)
+          .setRequired(true);
+
+        const rowSelect = new ActionRowBuilder().addComponents(levelSelect);
+        const rowButton = new ActionRowBuilder().addComponents(openButton);
+
+        try {
+          await interaction.update({
+            content: `Category selected: **${levelLabel}**. Now open the modal.`,
+            components: [rowSelect, rowButton]
+          });
+        } catch (e) {
+          try {
+            await interaction.reply({ content: `Category selected: **${levelLabel}**. Now open the modal.`, components: [rowSelect, rowButton], ephemeral: true });
+          } catch (err) {}
+        }
+        return;
+      }
+
       // Tutor select handler for username-based flows (info / notes / remove)
       if (interaction.customId && interaction.customId.startsWith('tutor_select|')) {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true });
@@ -2907,9 +3024,32 @@ if (cmd === 'createad') {
       saveDB();
     } catch (e) { /* ignore */ }
 
-    // Now send a follow-up with a button staff can click to open the modal (modal will use cached/db usernames)
-    const openButton = new ButtonBuilder().setCustomId(`open_createad_modal|${interaction.user.id}`).setLabel('Open Create Ad Modal').setStyle(ButtonStyle.Primary);
-    await interaction.followUp({ content: 'Ready — click the button below to open the ad modal.', components: [new ActionRowBuilder().addComponents(openButton)], ephemeral: true }).catch(() => {});
+    // Now send a follow-up that asks for category first (University/A level/IGCSE/etc),
+    // then enables opening the modal. We do this outside the modal to avoid Discord's 5-row modal limit.
+    const levelOptions = [
+      new StringSelectMenuOptionBuilder().setLabel('University').setValue('university'),
+      new StringSelectMenuOptionBuilder().setLabel('A level').setValue('a_level'),
+      new StringSelectMenuOptionBuilder().setLabel('IGCSE').setValue('igcse'),
+      new StringSelectMenuOptionBuilder().setLabel('Below IGCSE').setValue('below_igcse'),
+      new StringSelectMenuOptionBuilder().setLabel('Language').setValue('language'),
+      new StringSelectMenuOptionBuilder().setLabel('Other').setValue('other')
+    ];
+    const levelSelect = new StringSelectMenuBuilder()
+      .setCustomId(`createad_level|${interaction.user.id}`)
+      .setPlaceholder('Select subject level category')
+      .addOptions(levelOptions)
+      .setRequired(true);
+    const openButton = new ButtonBuilder()
+      .setCustomId(`open_createad_modal|${interaction.user.id}|other`)
+      .setLabel('Open Create Ad Modal')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(true);
+
+    await interaction.followUp({
+      content: 'Ready — select the subject level category, then open the ad modal.',
+      components: [new ActionRowBuilder().addComponents(levelSelect), new ActionRowBuilder().addComponents(openButton)],
+      ephemeral: true
+    }).catch(() => {});
     return;
 }
 
