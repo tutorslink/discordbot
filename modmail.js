@@ -25,7 +25,9 @@ import {
   PermissionsBitField,
   ModalBuilder,
   TextInputBuilder,
-  TextInputStyle
+  TextInputStyle,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder
 } from 'discord.js';
 
 const {
@@ -34,6 +36,21 @@ const {
   MODMAIL_TRANSCRIPTS_CHANNEL_ID: ENV_MODMAIL_TRANSCRIPTS_CHANNEL_ID,
   STAFF_CHAT_ID
 } = process.env;
+
+// Modmail purpose categories - maps purpose key to category ID
+const MODMAIL_PURPOSE_CATEGORIES = {
+  tutor_application: '1460567488634032200',
+  complaints_suggestions: '1460567621186621524',
+  customer_service: '1460567769966710809',
+  payment: '1460567838166356122'
+};
+
+const MODMAIL_PURPOSE_OPTIONS = [
+  { value: 'tutor_application', label: 'Wish to apply as a tutor', description: 'Apply to become a tutor on Tutors Link' },
+  { value: 'complaints_suggestions', label: 'Complaints/Suggestions', description: 'Complain or suggest regarding tutors, students, or Tutors Link as a whole' },
+  { value: 'customer_service', label: 'Need help with procedure', description: 'Help with finding tutors, applying, paying, or other procedures' },
+  { value: 'payment', label: 'Payment', description: 'Anything related to giving or receiving payments' }
+];
 
 export default function initModmail({ client, db, saveDB, config = {}, notifyError = null }) {
   if (!client || !db || !saveDB) throw new Error('initModmail missing args');
@@ -101,19 +118,44 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
   db.modmail.pending = db.modmail.pending || {};
   db.modmail.nextId = db.modmail.nextId || 1;
   // per-user creation cooldown mapping - not persisted to avoid DB growth, but we can store timestamp in memory
-  const modmailCreationCooldown = {}; // userId -> timestamp of last creation
+  const modmailCreationCooldown = {}; // `${userId}:${purposeKey}` -> timestamp of last creation
+
+  // Migrate legacy byUser mapping (userId -> channelId) into per-purpose mapping (userId -> { purposeKey: channelId })
+  try {
+    for (const uid of Object.keys(db.modmail.byUser || {})) {
+      const val = db.modmail.byUser[uid];
+      if (!val) { db.modmail.byUser[uid] = {}; continue; }
+      if (typeof val === 'string') {
+        const channelId = val;
+        const t = db.modmail.byChannel ? db.modmail.byChannel[channelId] : null;
+        const key = (t && t.purpose) ? String(t.purpose) : 'legacy';
+        db.modmail.byUser[uid] = { [key]: channelId };
+      } else if (typeof val !== 'object') {
+        db.modmail.byUser[uid] = {};
+      }
+    }
+  } catch (e) {
+    console.warn('modmail byUser migration failed', e);
+  }
   saveDB();
 
   // create modmail channel with robust overwrites for multiple staff roles
-  async function createModmailChannel(userId) {
+  async function createModmailChannel(userId, purposeKey, purposeCategoryId = null) {
     try {
-      // prevent multiple modmail channels for same user
-      if (db.modmail.byUser && db.modmail.byUser[userId]) {
-        throw new Error('User already has an active modmail channel');
+      const pKey = String(purposeKey || '').trim() || 'unknown';
+
+      // prevent multiple modmail channels for same user+purpose
+      db.modmail.byUser = db.modmail.byUser || {};
+      db.modmail.byUser[userId] = db.modmail.byUser[userId] || {};
+      const existingChannelId = db.modmail.byUser[userId][pKey];
+      if (existingChannelId) {
+        throw new Error('You already have an active ticket for this category.');
       }
-      // 120s cooldown after creation per user
+
+      // 120s cooldown after creation per user+purpose
       const now = Date.now();
-      const last = modmailCreationCooldown[userId] || 0;
+      const cooldownKey = `${userId}:${pKey}`;
+      const last = modmailCreationCooldown[cooldownKey] || 0;
       if (now - last < 120 * 1000) {
         throw new Error('Please wait a bit before creating another ticket (cooldown)');
       }
@@ -141,12 +183,17 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
         type: ChannelType.GuildText,
         permissionOverwrites: overwrites
       };
-      if (MODMAIL_CATEGORY_ID) opts.parent = MODMAIL_CATEGORY_ID;
+      // Use purpose-specific category if provided, otherwise fall back to default MODMAIL_CATEGORY_ID
+      if (purposeCategoryId) {
+        opts.parent = purposeCategoryId;
+      } else if (MODMAIL_CATEGORY_ID) {
+        opts.parent = MODMAIL_CATEGORY_ID;
+      }
 
       const channel = await guild.channels.create(opts).catch(err => { throw err; });
 
       // set cooldown
-      modmailCreationCooldown[userId] = Date.now();
+      modmailCreationCooldown[cooldownKey] = Date.now();
 
       return { channel, ticketNum, code };
     } catch (e) {
@@ -191,11 +238,8 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
   async function sendOrUpdateUserControl(ticket) {
     try {
       if (!ticket || !ticket.userId) return;
-      // throttle: if last sent less than 3s ago, skip
-      const THROTTLE_MS = 3000;
-      ticket._lastDmControlAt = ticket._lastDmControlAt || 0;
-      if (Date.now() - ticket._lastDmControlAt < THROTTLE_MS) return;
-      ticket._lastDmControlAt = Date.now();
+      // Non-sticky: only send once per ticket (do not delete/repost after staff messages)
+      if (ticket.dmControlMessageId) return;
 
       const user = await client.users.fetch(ticket.userId).catch(() => null);
       if (!user) return;
@@ -204,20 +248,11 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
 
       const rows = [
         new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`mm_close_dm|${ticket.channelId}`).setLabel('Close ticket').setStyle(ButtonStyle.Danger),
           new ButtonBuilder().setCustomId(`mm_ping_dm|${ticket.channelId}`).setLabel('Ping staff (once/day)').setStyle(ButtonStyle.Primary)
         )
       ];
 
-      const content = `Controls for your support chat, Ticket ID: modmail-${ticket.id}\n-# Make sure you see a ✅ reaction on your message. If not, resend your message after 2 hours or DM Staff personally`;
-
-      // delete previous control message if exists, but do it once per call
-      if (ticket.dmControlMessageId) {
-        try {
-          const prev = await dm.messages.fetch(ticket.dmControlMessageId).catch(() => null);
-          if (prev) await prev.delete().catch(() => {});
-        } catch (e) { /* ignore */ }
-      }
+      const content = `Controls for your support chat, Ticket ID: modmail-${ticket.id}\n- Ping staff if you haven’t received a reply.\n- To close a ticket, please ask staff (users cannot close tickets via DM).`;
 
       const sent = await dm.send({ content, components: rows }).catch(err => { throw err; });
       if (sent) { ticket.dmControlMessageId = sent.id; saveDB(); }
@@ -239,6 +274,7 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
       lines.push(`Modmail Ticket #${ticket.id}`);
       lines.push(`User ID: ${ticket.userId}`);
       lines.push(`Channel ID: ${ticket.channelId}`);
+      lines.push(`Purpose: ${ticket.purposeLabel || ticket.purpose || 'Not specified'}`);
       lines.push(`Started: <t:${Math.floor(ticket.createdAt/1000)}:f>`);
       lines.push(`Closed by: ${closedByText}`);
       lines.push('----------------------------------');
@@ -273,16 +309,137 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
   // interaction handlers - create button, toggles, close, etc
   client.on('interactionCreate', async (interaction) => {
     try {
-      if (!interaction.isButton()) return;
-      const custom = interaction.customId;
+      // Route a pending DM to one of multiple open tickets, or start a new ticket
+      // customId: mm_route|<userId>
+      if (interaction.isStringSelectMenu() && interaction.customId && interaction.customId.startsWith('mm_route|')) {
+        const userId = interaction.customId.split('|')[1];
+        if (interaction.user.id !== userId) return safeReply(interaction, { content: 'This dropdown is only for the initiating user.', ephemeral: true });
 
-      if (custom.startsWith('mm_create|')) {
-        const userId = custom.split('|')[1];
-        if (interaction.user.id !== userId) return safeReply(interaction, { content: 'This button is only for the initiating user.', ephemeral: true });
+        const choice = interaction.values && interaction.values[0] ? String(interaction.values[0]) : '';
         await interaction.deferUpdate().catch(() => {});
+
+        // If user wants to start a new ticket, show the purpose dropdown again
+        if (choice === 'new_ticket') {
+          const purposeOptions = MODMAIL_PURPOSE_OPTIONS.map(opt =>
+            new StringSelectMenuOptionBuilder()
+              .setLabel(opt.label)
+              .setValue(opt.value)
+              .setDescription(opt.description)
+          );
+          const purposeSelect = new StringSelectMenuBuilder()
+            .setCustomId(`mm_purpose|${userId}`)
+            .setPlaceholder('Select the purpose of your ticket')
+            .addOptions(purposeOptions)
+            .setRequired(true);
+          const row = new ActionRowBuilder().addComponents(purposeSelect);
+          try {
+            await interaction.editReply({ content: 'Please select the purpose of your new ticket.', components: [row] }).catch(() => {});
+          } catch (e) {}
+          return;
+        }
+
+        // Otherwise, route pending messages to the selected purpose ticket
+        const purposeKey = choice;
+        const byUserMap = (db.modmail.byUser && typeof db.modmail.byUser[userId] === 'object' && db.modmail.byUser[userId]) ? db.modmail.byUser[userId] : {};
+        const channelId = byUserMap[purposeKey];
+        if (!channelId) return safeReply(interaction, { content: 'That ticket could not be found. Please try again.', ephemeral: true });
+
+        const ticket = db.modmail.byChannel ? db.modmail.byChannel[channelId] : null;
+        if (!ticket) {
+          // cleanup stale mapping
+          try { delete db.modmail.byUser[userId][purposeKey]; } catch {}
+          saveDB();
+          return safeReply(interaction, { content: 'That ticket no longer exists. Please try again.', ephemeral: true });
+        }
+
+        const pending = db.modmail.pending && db.modmail.pending[userId] ? db.modmail.pending[userId] : null;
+        if (pending && Array.isArray(pending.messages) && pending.messages.length) {
+          const ch = await client.channels.fetch(channelId).catch(() => null);
+          if (ch) {
+            for (const p of pending.messages) {
+              ticket.messages.push({ who: `User ${userId}`, at: p.at || Date.now(), text: p.text || '', attachments: p.attachments || [] });
+              const sendRes = await ch.send({ content: `Message from <@${userId}>: ${p.text || ''}`, files: p.attachments && p.attachments.length ? p.attachments.slice() : [] }).catch(err => ({ __failed: true, error: err }));
+              if (!sendRes || sendRes.__failed) {
+                console.warn('route pending to channel failed', sendRes && sendRes.error);
+              } else if (p.messageId) {
+                // react ✅ on original DM message if possible
+                try {
+                  const u = await client.users.fetch(userId).catch(() => null);
+                  const dm = u ? await u.createDM().catch(() => null) : null;
+                  const m = dm ? await dm.messages.fetch(p.messageId).catch(() => null) : null;
+                  if (m) await m.react('✅').catch(() => {});
+                } catch (e) {}
+              }
+            }
+            saveDB();
+            try { await updateSticky(channelId).catch(() => {}); } catch {}
+          }
+        }
+        // clear pending once routed
+        try { delete db.modmail.pending[userId]; saveDB(); } catch {}
+
+        // ensure the ping control exists (sent once)
+        try { await sendOrUpdateUserControl(ticket); } catch (e) {}
+        return;
+      }
+
+      // Handle purpose dropdown selection
+      if (interaction.isStringSelectMenu() && interaction.customId && interaction.customId.startsWith('mm_purpose|')) {
+        const userId = interaction.customId.split('|')[1];
+        if (interaction.user.id !== userId) return safeReply(interaction, { content: 'This dropdown is only for the initiating user.', ephemeral: true });
+        
+        const selectedPurpose = interaction.values && interaction.values[0];
+        if (!selectedPurpose || !MODMAIL_PURPOSE_CATEGORIES[selectedPurpose]) {
+          return safeReply(interaction, { content: 'Invalid purpose selected. Please try again.', ephemeral: true });
+        }
+
+        await interaction.deferUpdate().catch(() => {});
+        
+        const purposeCategoryId = MODMAIL_PURPOSE_CATEGORIES[selectedPurpose];
+        const purposeLabel = MODMAIL_PURPOSE_OPTIONS.find(opt => opt.value === selectedPurpose)?.label || selectedPurpose;
+
+        // If a ticket already exists for this purpose, just route any pending messages to it (one open ticket per category)
+        db.modmail.byUser = db.modmail.byUser || {};
+        db.modmail.byUser[userId] = (db.modmail.byUser[userId] && typeof db.modmail.byUser[userId] === 'object') ? db.modmail.byUser[userId] : {};
+        const existingChannelId = db.modmail.byUser[userId][selectedPurpose];
+        if (existingChannelId) {
+          const existingTicket = db.modmail.byChannel ? db.modmail.byChannel[existingChannelId] : null;
+          if (existingTicket) {
+            const pending = db.modmail.pending && db.modmail.pending[userId] ? db.modmail.pending[userId] : null;
+            if (pending && Array.isArray(pending.messages) && pending.messages.length) {
+              const ch = await client.channels.fetch(existingChannelId).catch(() => null);
+              if (ch) {
+                for (const p of pending.messages) {
+                  existingTicket.messages.push({ who: `User ${userId}`, at: p.at || Date.now(), text: p.text || '', attachments: p.attachments || [] });
+                  const sendRes = await ch.send({ content: `Message from <@${userId}>: ${p.text || ''}`, files: p.attachments && p.attachments.length ? p.attachments.slice() : [] }).catch(err => ({ __failed: true, error: err }));
+                  if (!sendRes || sendRes.__failed) {
+                    console.warn('forward pending to existing ticket failed', sendRes && sendRes.error);
+                  } else if (p.messageId) {
+                    try {
+                      const u = await client.users.fetch(userId).catch(() => null);
+                      const dm = u ? await u.createDM().catch(() => null) : null;
+                      const m = dm ? await dm.messages.fetch(p.messageId).catch(() => null) : null;
+                      if (m) await m.react('✅').catch(() => {});
+                    } catch (e) {}
+                  }
+                }
+                saveDB();
+                try { await updateSticky(existingChannelId).catch(() => {}); } catch {}
+              }
+            }
+            try { delete db.modmail.pending[userId]; saveDB(); } catch {}
+            try { await sendOrUpdateUserControl(existingTicket); } catch (e) {}
+            try { const u = await client.users.fetch(userId).catch(() => null); if (u) await u.send(`Your message was sent to your existing ticket (Purpose: ${purposeLabel}).`).catch(() => {}); } catch (e) {}
+            return;
+          } else {
+            // cleanup stale mapping
+            try { delete db.modmail.byUser[userId][selectedPurpose]; saveDB(); } catch {}
+          }
+        }
+        
         let created = null;
         try {
-          created = await createModmailChannel(userId);
+          created = await createModmailChannel(userId, selectedPurpose, purposeCategoryId);
         } catch (e) {
           // Creation blocked or failed, let user know
           await safeReply(interaction, { content: 'Failed to create channel, staff have been notified. Please try again later.', ephemeral: true });
@@ -291,8 +448,21 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
         if (!created) return safeReply(interaction, { content: 'Failed to create channel, try again later.', ephemeral: true });
 
         const { channel, ticketNum } = created;
-        const ticket = { id: ticketNum, userId, channelId: channel.id, createdAt: Date.now(), anonymousMods: false, messages: [], lastPingAt: 0, stickyMessageId: null, dmControlMessageId: null };
-        db.modmail.byUser[userId] = channel.id;
+        const ticket = { 
+          id: ticketNum, 
+          userId, 
+          channelId: channel.id, 
+          createdAt: Date.now(), 
+          anonymousMods: false, 
+          messages: [], 
+          lastPingAt: 0, 
+          stickyMessageId: null, 
+          dmControlMessageId: null,
+          purpose: selectedPurpose,
+          purposeLabel: purposeLabel
+        };
+        db.modmail.byUser[userId] = (db.modmail.byUser[userId] && typeof db.modmail.byUser[userId] === 'object') ? db.modmail.byUser[userId] : {};
+        db.modmail.byUser[userId][selectedPurpose] = channel.id;
         db.modmail.byChannel[channel.id] = ticket;
         saveDB();
 
@@ -305,6 +475,13 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
               if (sendRes && sendRes.__failed) {
                 console.warn('forward pending to channel failed', sendRes.error);
                 try { const u = await client.users.fetch(userId).catch(() => null); if (u) await u.send('We created your ticket but could not forward your earlier message to staff due to a server error.').catch(() => {}); } catch {}
+              } else if (p.messageId) {
+                try {
+                  const u = await client.users.fetch(userId).catch(() => null);
+                  const dm = u ? await u.createDM().catch(() => null) : null;
+                  const m = dm ? await dm.messages.fetch(p.messageId).catch(() => null) : null;
+                  if (m) await m.react('✅').catch(() => {});
+                } catch (e) {}
               }
             }
             delete db.modmail.pending[userId];
@@ -316,12 +493,20 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
         // ping staff roles in channel if possible
         try {
           const mention = getStaffRoleIds().map(r => `<@&${r}>`).join(' ');
-          await channel.send({ content: `${mention} New modmail from <@${userId}> started. Ticket ID: modmail-${ticket.id}` }).catch(() => {});
+          await channel.send({ content: `${mention} New modmail from <@${userId}> started. Purpose: ${purposeLabel}. Ticket ID: modmail-${ticket.id}` }).catch(() => {});
         } catch (e) { /* ignore */ }
         await updateSticky(channel.id).catch(() => {});
-        try { const userObj = await client.users.fetch(userId).catch(() => null); if (userObj) await userObj.send(`Your support ticket has been created, ticket ID: modmail-${ticket.id}`).catch(() => {}); } catch (e) {}
+        try { 
+          const userObj = await client.users.fetch(userId).catch(() => null); 
+          if (userObj) {
+            await userObj.send(`Your support ticket has been created (Purpose: ${purposeLabel}), ticket ID: modmail-${ticket.id}`).catch(() => {}); 
+          }
+        } catch (e) {}
         return;
       }
+
+      if (!interaction.isButton()) return;
+      const custom = interaction.customId;
 
       if (custom.startsWith('mm_cancel|')) {
         const userId = custom.split('|')[1];
@@ -358,8 +543,8 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
         return;
       }
 
-      // mm_close_dm| and mm_ping_dm| handled separately in DM handler below, but acknowledge here if it arrives first
-      if (custom.startsWith('mm_close_dm|') || custom.startsWith('mm_ping_dm|')) {
+      // mm_ping_dm| handled separately in DM handler below, but acknowledge here if it arrives first
+      if (custom.startsWith('mm_ping_dm|')) {
         try { if (!interaction.replied && !interaction.deferred) await interaction.deferUpdate().catch(() => {}); } catch {}
         return;
       }
@@ -379,32 +564,80 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
       // DM from user
       if (message.channel.type === ChannelType.DM) {
         const userId = message.author.id;
-        const mapped = db.modmail.byUser[userId];
+        const mappedRaw = db.modmail.byUser[userId];
         const attachments = message.attachments && message.attachments.size ? Array.from(message.attachments.values()).map(a => a.url) : [];
 
-        if (!mapped) {
+        // Normalize mapping to { purposeKey: channelId }
+        let mapped = {};
+        if (mappedRaw && typeof mappedRaw === 'object') mapped = mappedRaw;
+        else if (typeof mappedRaw === 'string') mapped = { legacy: mappedRaw };
+
+        const openEntries = Object.entries(mapped || {}).filter(([, cid]) => cid);
+
+        if (!openEntries.length) {
           db.modmail.pending = db.modmail.pending || {};
           db.modmail.pending[userId] = db.modmail.pending[userId] || { messages: [], createdAt: Date.now() };
           if ((message.content && message.content.trim().length > 0) || attachments.length) {
-            db.modmail.pending[userId].messages.push({ text: message.content || '', attachments, at: Date.now() });
+            db.modmail.pending[userId].messages.push({ text: message.content || '', attachments, at: Date.now(), messageId: message.id });
             saveDB();
           }
 
-          const rows = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`mm_create|${userId}`).setLabel('Talk to Staff').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`mm_cancel|${userId}`).setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+          // Show dropdown menu for purpose selection
+          const purposeOptions = MODMAIL_PURPOSE_OPTIONS.map(opt => 
+            new StringSelectMenuOptionBuilder()
+              .setLabel(opt.label)
+              .setValue(opt.value)
+              .setDescription(opt.description)
           );
 
-          await message.channel.send({ content: 'Press "Talk to Staff" to create a support ticket with staff, or Cancel.', components: [rows] }).catch(() => {});
+          const purposeSelect = new StringSelectMenuBuilder()
+            .setCustomId(`mm_purpose|${userId}`)
+            .setPlaceholder('Select the purpose of your ticket')
+            .addOptions(purposeOptions)
+            .setRequired(true);
+
+          const rows = new ActionRowBuilder().addComponents(purposeSelect);
+
+          await message.channel.send({ content: 'Please select the purpose of your ticket to create a support ticket with staff.', components: [rows] }).catch(() => {});
           return;
         }
 
-        const channelId = mapped;
-        const ticket = db.modmail.byChannel[channelId];
+        // If user has multiple open tickets, ask where to route this DM
+        if (openEntries.length > 1) {
+          db.modmail.pending = db.modmail.pending || {};
+          db.modmail.pending[userId] = db.modmail.pending[userId] || { messages: [], createdAt: Date.now() };
+          if ((message.content && message.content.trim().length > 0) || attachments.length) {
+            db.modmail.pending[userId].messages.push({ text: message.content || '', attachments, at: Date.now(), messageId: message.id });
+            saveDB();
+          }
+
+          const routeOptions = [];
+          for (const [purposeKey, channelId] of openEntries.slice(0, 24)) {
+            const t = db.modmail.byChannel ? db.modmail.byChannel[channelId] : null;
+            const label = (t && (t.purposeLabel || t.purpose)) ? String(t.purposeLabel || t.purpose) : String(purposeKey);
+            const desc = t && t.id ? `Ticket modmail-${t.id}` : 'Open ticket';
+            routeOptions.push(new StringSelectMenuOptionBuilder().setLabel(label.substring(0, 100)).setValue(String(purposeKey).substring(0, 100)).setDescription(desc.substring(0, 50)));
+          }
+          routeOptions.push(new StringSelectMenuOptionBuilder().setLabel('Create a new ticket').setValue('new_ticket').setDescription('Start another ticket in a different category'));
+
+          const routeSelect = new StringSelectMenuBuilder()
+            .setCustomId(`mm_route|${userId}`)
+            .setPlaceholder('Choose which ticket to send this message to')
+            .addOptions(routeOptions)
+            .setRequired(true);
+
+          await message.channel.send({ content: 'You have multiple open tickets. Choose where to send your message:', components: [new ActionRowBuilder().addComponents(routeSelect)] }).catch(() => {});
+          return;
+        }
+
+        // Exactly one open ticket: forward message there
+        const [onlyPurposeKey, onlyChannelId] = openEntries[0];
+        const ticket = db.modmail.byChannel[onlyChannelId];
         if (!ticket) {
-          delete db.modmail.byUser[userId];
+          // cleanup stale mapping
+          try { delete db.modmail.byUser[userId][onlyPurposeKey]; } catch {}
           saveDB();
-          await message.channel.send('Previous ticket not found, please press Talk to Staff to start a new one.').catch(() => {});
+          await message.channel.send('Previous ticket not found. Please select a purpose to start a new ticket.').catch(() => {});
           return;
         }
 
@@ -414,7 +647,7 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
         const embed = new EmbedBuilder().setAuthor({ name: `${message.author.tag}`, iconURL: message.author.displayAvatarURL?.() }).setTimestamp();
         if (message.content && message.content.trim().length > 0) embed.setDescription(message.content);
 
-        const ch = await client.channels.fetch(channelId).catch(() => null);
+        const ch = await client.channels.fetch(onlyChannelId).catch(() => null);
         if (ch) {
           try {
             const payload = { content: `Message from <@${userId}>` };
@@ -431,19 +664,19 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
             } else {
               // Successfully forwarded, react with ✅ on user's DM message
               try { await message.react('✅').catch(() => {}); } catch (e) {}
-              await updateSticky(channelId).catch(() => {});
+              await updateSticky(onlyChannelId).catch(() => {});
             }
           } catch (e) {
             console.warn('Forwarding DM to modmail channel failed', e);
             await notifyStaff(e, { module: 'modmail.forwardDM', userId });
             db.modmail.pending[userId] = db.modmail.pending[userId] || { messages: [], createdAt: Date.now() };
-            db.modmail.pending[userId].messages.push({ text: message.content || '', attachments, at: Date.now() });
+            db.modmail.pending[userId].messages.push({ text: message.content || '', attachments, at: Date.now(), messageId: message.id });
             saveDB();
             await message.channel.send('We received your message, but could not deliver it to staff. Please try again later.').catch(() => {});
           }
         } else {
           db.modmail.pending[userId] = db.modmail.pending[userId] || { messages: [], createdAt: Date.now() };
-          db.modmail.pending[userId].messages.push({ text: message.content || '', attachments, at: Date.now() });
+          db.modmail.pending[userId].messages.push({ text: message.content || '', attachments, at: Date.now(), messageId: message.id });
           saveDB();
           await message.channel.send('We cannot find your staff channel right now. Please press Talk to Staff to (re)create a ticket.').catch(() => {});
         }
@@ -479,10 +712,20 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
           return;
         }
 
-        const sendText = ticket.anonymousMods ? `Staff reply: ${message.content || ''}` : `${message.author.tag}: ${message.content || ''}`;
-
         try {
-          const dmPayload = { content: sendText };
+          const dmPayload = {};
+          if (ticket.anonymousMods) {
+            dmPayload.content = `Staff reply: ${message.content || ''}`;
+          } else {
+            const body = (message.content || '').trim();
+            const staffEmbed = new EmbedBuilder()
+              .setAuthor({ name: `${message.author.tag}`, iconURL: message.author.displayAvatarURL?.() })
+              .setTimestamp();
+            if (body) staffEmbed.setDescription(body);
+            else if (attachments.length) staffEmbed.setDescription('(attachment)');
+            else staffEmbed.setDescription('(no text)');
+            dmPayload.embeds = [staffEmbed];
+          }
           if (attachments.length) dmPayload.files = attachments.slice();
 
           const dmSent = await userObj.send(dmPayload).catch(err => ({ __failed: true, error: err }));
@@ -502,8 +745,6 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
           } else {
             // success, react with check mark
             try { await message.react('✅').catch(async (e) => { /* if react fails, fallback to a small notice */ await message.channel.send('Message forwarded to user, but I could not add reaction.').catch(() => {}); }); } catch (e) {}
-            // update user control but throttled internally
-            try { await sendOrUpdateUserControl(ticket).catch(() => {}); } catch (e) { /* ignore */ }
           }
         } catch (e) {
           console.warn('Failed to DM user', e);
@@ -529,23 +770,8 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
       const id = interaction.customId;
 
       if (id.startsWith('mm_close_dm|')) {
-        const channelId = id.split('|')[1];
-        const ticket = db.modmail.byChannel[channelId];
-        if (!ticket) return safeReply(interaction, { content: 'Ticket not found.', ephemeral: true });
-        if (interaction.user.id !== ticket.userId) return safeReply(interaction, { content: 'Only the ticket owner can close from DM.', ephemeral: true });
-
-        await interaction.deferUpdate().catch(() => {});
-        await postTranscript(ticket, `User ${interaction.user.tag}`);
-        const ch = await client.channels.fetch(channelId).catch(() => null);
-        if (ch) {
-          try { await ch.send('Chat closed by user, deleting channel...').catch(() => {}); await ch.delete('Closed by user'); } catch (e) { try { await ch.permissionOverwrites.edit(ticket.userId, { ViewChannel: false, SendMessages: false }); } catch {} }
-        }
-        try { const u = await client.users.fetch(ticket.userId).catch(()=>null); if (u && ticket.dmControlMessageId) { const dm = await u.createDM().catch(()=>null); if (dm) { const m = await dm.messages.fetch(ticket.dmControlMessageId).catch(()=>null); if (m) await m.delete().catch(()=>{}); } } } catch(e){}
-        delete db.modmail.byChannel[channelId];
-        for (const uid of Object.keys(db.modmail.byUser)) if (db.modmail.byUser[uid] === channelId) delete db.modmail.byUser[uid];
-        saveDB();
-        try { await interaction.followUp({ content: 'Your conversation has been closed, transcript stored.', ephemeral: true }); } catch {}
-        return;
+        // Disabled: users can no longer close modmail tickets from DM
+        return safeReply(interaction, { content: 'Closing tickets via DM is disabled. Please ask staff to close the ticket for you.', ephemeral: true });
       }
 
       if (id.startsWith('mm_ping_dm|')) {
@@ -598,7 +824,17 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
           try { const u = await client.users.fetch(ticket.userId).catch(()=>null); if (u && ticket.dmControlMessageId) { const dm = await u.createDM().catch(()=>null); if (dm) { const m = await dm.messages.fetch(ticket.dmControlMessageId).catch(()=>null); if (m) await m.delete().catch(()=>{}); } } } catch(e){}
 
           delete db.modmail.byChannel[channelId];
-          for (const uid of Object.keys(db.modmail.byUser)) if (db.modmail.byUser[uid] === channelId) delete db.modmail.byUser[uid];
+          // remove mapping for this user+purpose
+          try {
+            const uid = ticket.userId;
+            const pKey = ticket.purpose || 'unknown';
+            if (db.modmail.byUser && db.modmail.byUser[uid] && typeof db.modmail.byUser[uid] === 'object') {
+              delete db.modmail.byUser[uid][pKey];
+              if (Object.keys(db.modmail.byUser[uid]).length === 0) delete db.modmail.byUser[uid];
+            } else if (db.modmail.byUser && typeof db.modmail.byUser[uid] === 'string') {
+              delete db.modmail.byUser[uid];
+            }
+          } catch (e) {}
           saveDB();
 
           try { await interaction.editReply({ content: 'Conversation closed and transcript posted.', ephemeral: true }); } catch (e) {}
