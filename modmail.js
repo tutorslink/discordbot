@@ -45,6 +45,14 @@ const MODMAIL_PURPOSE_CATEGORIES = {
   payment: '1460567838166356122'
 };
 
+// Single-letter codes to append to ticket numbers (number stays the same)
+const PURPOSE_LETTER = {
+  payment: 'P',
+  complaints_suggestions: 'C',
+  customer_service: 'S',
+  tutor_application: 'A'
+};
+
 const MODMAIL_PURPOSE_OPTIONS = [
   { value: 'tutor_application', label: 'Wish to apply as a tutor', description: 'Apply to become a tutor on Tutors Link' },
   { value: 'complaints_suggestions', label: 'Complaints/Suggestions', description: 'Complain or suggest regarding tutors, students, or Tutors Link as a whole' },
@@ -167,7 +175,9 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
       db.modmail.nextId = ticketNum + 1;
       saveDB();
 
-      const code = `modmail-${ticketNum}`;
+      const letter = PURPOSE_LETTER[pKey] || '';
+      const shortId = `${ticketNum}${letter}`; // e.g. 1A, 2P
+      const code = `modmail-${shortId}`;
 
       const overwrites = [
         { id: guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
@@ -304,6 +314,38 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
         }
       }
     } catch (e) { console.warn('postTranscript failed', e); await notifyStaff(e, { module: 'modmail.postTranscript', userId: ticket?.userId }); }
+  }
+
+  // Close ticket helper used by modal and message-based flows
+  async function closeTicket(ticket, closedByText) {
+    try {
+      if (!ticket) return;
+      await postTranscript(ticket, closedByText);
+      try { const u = await client.users.fetch(ticket.userId).catch(() => null); if (u) await u.send(`Your staff conversation (Ticket ${ticket.shortId || ('#'+ticket.id)}) has been closed by staff. Transcript saved.`).catch(() => {}); } catch (e) {}
+      const ch = await client.channels.fetch(ticket.channelId).catch(() => null);
+      if (ch) {
+        try { await ch.send('Chat closed by staff, deleting channel...').catch(() => {}); await ch.delete('Modmail closed by staff'); } catch (e) { try { await ch.permissionOverwrites.edit(ticket.userId, { ViewChannel: false, SendMessages: false }); } catch {} }
+      }
+      // delete DM control message if present
+      try { const u = await client.users.fetch(ticket.userId).catch(()=>null); if (u && ticket.dmControlMessageId) { const dm = await u.createDM().catch(()=>null); if (dm) { const m = await dm.messages.fetch(ticket.dmControlMessageId).catch(()=>null); if (m) await m.delete().catch(()=>{}); } } } catch(e){}
+
+      // cleanup db entries
+      try { delete db.modmail.byChannel[ticket.channelId]; } catch (e) {}
+      try {
+        const uid = ticket.userId;
+        const pKey = ticket.purpose || 'unknown';
+        if (db.modmail.byUser && db.modmail.byUser[uid] && typeof db.modmail.byUser[uid] === 'object') {
+          delete db.modmail.byUser[uid][pKey];
+          if (Object.keys(db.modmail.byUser[uid]).length === 0) delete db.modmail.byUser[uid];
+        } else if (db.modmail.byUser && typeof db.modmail.byUser[uid] === 'string') {
+          delete db.modmail.byUser[uid];
+        }
+      } catch (e) {}
+      saveDB();
+    } catch (e) {
+      console.warn('closeTicket failed', e);
+      await notifyStaff(e, { module: 'modmail.closeTicket', userId: ticket?.userId });
+    }
   }
 
   // interaction handlers - create button, toggles, close, etc
@@ -448,6 +490,8 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
         if (!created) return safeReply(interaction, { content: 'Failed to create channel, try again later.', ephemeral: true });
 
         const { channel, ticketNum } = created;
+        const letter = PURPOSE_LETTER[selectedPurpose] || '';
+        const shortId = `${ticketNum}${letter}`;
         const ticket = { 
           id: ticketNum, 
           userId, 
@@ -461,6 +505,8 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
           purpose: selectedPurpose,
           purposeLabel: purposeLabel
         };
+        ticket.letter = letter;
+        ticket.shortId = shortId;
         db.modmail.byUser[userId] = (db.modmail.byUser[userId] && typeof db.modmail.byUser[userId] === 'object') ? db.modmail.byUser[userId] : {};
         db.modmail.byUser[userId][selectedPurpose] = channel.id;
         db.modmail.byChannel[channel.id] = ticket;
@@ -696,6 +742,88 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
         const member = message.member;
         if (!member || !isStaff(member)) return;
 
+        // Staff command: single-step close, format: /close <number+letter> (e.g. /close 1A)
+        const staffText = (message.content || '').trim();
+        const mClose = staffText.match(/^\/close\s+(\d+[A-Za-z])\s*$/i);
+        if (mClose) {
+          const provided = String(mClose[1]).toUpperCase();
+          const expected = String(ticket.shortId || `${ticket.id}${ticket.letter || ''}`).toUpperCase();
+          if (provided !== expected) {
+            await message.channel.send(`Ticket token mismatch. This channel is ticket ${ticket.shortId || ticket.id}. Use /close ${ticket.shortId || ticket.id}`).catch(() => {});
+            return;
+          }
+
+          // If this is an application ticket, start the acceptance/question flow
+          if (ticket.purpose === 'tutor_application') {
+            ticket.awaiting = { step: 'accepted', requestedBy: message.author.id };
+            saveDB();
+            await message.channel.send('Was the tutor accepted? Reply `yes` or `no`.').catch(() => {});
+            return;
+          }
+
+          // Otherwise close immediately
+          await message.channel.send('Closing ticket...').catch(() => {});
+          await closeTicket(ticket, `${message.author.tag} (staff)`);
+          return;
+        }
+
+        // Handle application close flow steps (only staff responses advance it)
+        if (ticket.awaiting && ticket.awaiting.requestedBy && ticket.awaiting.requestedBy === message.author.id) {
+          const step = ticket.awaiting.step;
+          const lc = staffText.toLowerCase();
+          if (step === 'accepted') {
+            if (lc.startsWith('y')) {
+              ticket.applicationAccepted = true;
+              ticket.awaiting.step = 'subject';
+              saveDB();
+              await message.channel.send('Please provide the subject name for the accepted tutor.').catch(() => {});
+              return;
+            } else if (lc.startsWith('n')) {
+              ticket.applicationAccepted = false;
+              try { delete ticket.awaiting; } catch (e) {}
+              saveDB();
+              await message.channel.send('Tutor not accepted; closing ticket...').catch(() => {});
+              await closeTicket(ticket, `${message.author.tag} (staff)`);
+              return;
+            } else {
+              await message.channel.send('Please reply `yes` or `no`.').catch(() => {});
+              return;
+            }
+          }
+          if (step === 'subject') {
+            const subj = staffText.trim();
+            if (!subj) { await message.channel.send('Provide a non-empty subject name.').catch(() => {}); return; }
+            ticket.applicationSubject = subj;
+            ticket.awaiting.step = 'create_ad';
+            saveDB();
+            await message.channel.send(`Subject saved: ${subj}\nDo you want to create an ad now? Reply 'yes' to create or 'no' to skip.`).catch(() => {});
+            return;
+          }
+          if (step === 'create_ad') {
+            if (lc.startsWith('y')) {
+              // Send a button which opens the existing create-ad modal in index.js
+              try {
+                const subjectKey = ticket.applicationSubject ? encodeURIComponent(ticket.applicationSubject) : 'other';
+                const btn = new ButtonBuilder().setCustomId(`open_createad_modal|${message.author.id}|${subjectKey}|modmail|${message.channel.id}`).setLabel('Open Create Ad').setStyle(ButtonStyle.Primary);
+                const row = new ActionRowBuilder().addComponents(btn);
+                await message.channel.send({ content: `Click the button to open the create-ad modal (subject: ${ticket.applicationSubject || 'N/A'}). After creating the ad, close the ticket with /close ${ticket.shortId || ticket.id}.`, components: [row] }).catch(() => {});
+                // leave ticket open so staff can click the button and complete the modal
+                try { delete ticket.awaiting; } catch (e) {}
+                saveDB();
+                return;
+              } catch (e) { /* fallthrough */ }
+            } else if (lc.startsWith('n')) {
+              try { delete ticket.awaiting; } catch (e) {}
+              saveDB();
+              await message.channel.send('Skipping ad creation; closing ticket...').catch(() => {});
+              await closeTicket(ticket, `${message.author.tag} (staff)`);
+              return;
+            } else {
+              await message.channel.send('Please reply `yes` or `no`.').catch(() => {});
+              return;
+            }
+          }
+        }
         // check if message starts with = (but not = ) - internal staff note, don't forward
         const msgContent = message.content || '';
         if (msgContent.startsWith('=') && !msgContent.startsWith('= ')) {
@@ -854,6 +982,14 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
   db._modmail_helpers = db._modmail_helpers || {};
   db._modmail_helpers.updateSticky = updateSticky;
   db._modmail_helpers.sendOrUpdateUserControl = sendOrUpdateUserControl;
+  db._modmail_helpers.closeTicketByChannel = async function(channelId, closedByText) {
+    try {
+      if (!channelId) return;
+      const ticket = db.modmail.byChannel ? db.modmail.byChannel[channelId] : null;
+      if (!ticket) return;
+      await closeTicket(ticket, closedByText || 'system');
+    } catch (e) { console.warn('closeTicketByChannel failed', e); }
+  };
 
   console.log('modmail initialized');
 }
