@@ -878,7 +878,10 @@ client.on('interactionCreate', async (interaction) => {
       if (custom && custom.startsWith('open_createad_modal|')) {
         const parts = custom.split('|');
         const requester = parts[1];
-        const levelKey = normalizeCreateAdLevelKey(parts[2]) || 'other';
+        const subjectKey = parts[2] || '';
+        const origin = parts[3] || null;
+        const originChannel = parts[4] || null;
+        const levelKey = normalizeCreateAdLevelKey(subjectKey) || 'other';
         if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
           return interaction.reply({ content: 'Only the command invoker or staff may open this modal.', ephemeral: true });
         }
@@ -919,7 +922,7 @@ client.on('interactionCreate', async (interaction) => {
           const optionalFieldsInput = new TextInputBuilder().setCustomId('ad_optional_fields').setLabel(clampLabel('Optional: Message, Testimonials, Payment, Color, Role')).setStyle(TextInputStyle.Paragraph).setRequired(false).setValue(clampLabel('Message from tutor:\nStudent Testimonials:\nPayment Terms: 100% upfront before classes begin\nColor: \nRole ID: ', 1000));
 
           const modal = new ModalBuilder()
-            .setCustomId(`createad_modal|${interaction.id}|${levelKey}`)
+            .setCustomId(`createad_modal|${interaction.id}|${levelKey}|${origin || ''}|${originChannel || ''}|${subjectKey}`)
             .setTitle('Create Ad Details')
             .addComponents(
               subjectLabel,
@@ -1476,9 +1479,12 @@ if (custom.startsWith('open_close_modal|')) {
 
       // createad modal submit
         if (interaction.customId && interaction.customId.startsWith('createad_modal|')) {
-            const parts = interaction.customId.split('|');
-            const interactionId = parts[1];
-            const levelKey = normalizeCreateAdLevelKey(parts[2]) || 'other';
+          const parts = interaction.customId.split('|');
+          const interactionId = parts[1];
+          const levelKey = normalizeCreateAdLevelKey(parts[2]) || 'other';
+          const origin = parts[3] || null;
+          const originChannel = parts[4] || null;
+          const subjectKeyFromModal = parts[5] || null;
             
             if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can create ads.', ephemeral: true });
 
@@ -1703,6 +1709,13 @@ if (custom.startsWith('open_close_modal|')) {
                     }
                 }
             }
+
+            // If this createad was opened from modmail, close the originating ticket channel
+            try {
+              if (origin === 'modmail' && originChannel && db._modmail_helpers && typeof db._modmail_helpers.closeTicketByChannel === 'function') {
+                await db._modmail_helpers.closeTicketByChannel(originChannel, `${interaction.user.tag} (createad)`);
+              }
+            } catch (e) { console.warn('Failed to close originating modmail ticket after createad', e); }
 
             // Trigger sticky repost in find channel so sticky is always fresh after createad
             try {
