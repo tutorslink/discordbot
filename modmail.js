@@ -87,28 +87,38 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
   }
 
   // notify staff helper: uses provided notifyError callback if present, else sends in STAFF_CHAT_ID
-  async function notifyStaff(err, context = {}) {
-    try {
-      if (typeof notifyError === 'function') {
-        try { await notifyError(err, context); return; } catch (e) { console.warn('notifyError callback failed', e); }
-      }
-      // fallback: send to STAFF_CHAT_ID channel
-      if (!STAFF_CHAT_ID) {
-        console.error('STAFF_CHAT_ID not set, cannot notify staff about error', err, context);
-        return;
-      }
-      const ch = await client.channels.fetch(STAFF_CHAT_ID).catch(() => null);
-      const roleMentions = getStaffRoleIds().map(r => `<@&${r}>`).join(' ');
-      const short = `⚠️ Modmail error in module modmail.js\n${roleMentions}\nUser: ${context.userId || '(n/a)'}\nModule: ${context.module || 'modmail'}\n\`\`\`\n${String(err && (err.stack || err))[...]
-      if (ch) {
-        await ch.send({ content: short }).catch(() => { console.error('failed to post staff alert', err, context); });
-      } else {
-        console.error('STAFF_CHAT_ID configured but channel not found', err, context);
-      }
-    } catch (e) {
-      console.error('notifyStaff helper failed', e);
+  // Replace the notifyStaff function body (or at least the `short` string build) with this:
+
+async function notifyStaff(err, context = {}) {
+  try {
+    if (typeof notifyError === 'function') {
+      try { await notifyError(err, context); return; } catch (e) { console.warn('notifyError callback failed', e); }
     }
+
+    // fallback: send to STAFF_CHAT_ID channel
+    if (!STAFF_CHAT_ID) {
+      console.error('STAFF_CHAT_ID not set, cannot notify staff about error', err, context);
+      return;
+    }
+
+    const ch = await client.channels.fetch(STAFF_CHAT_ID).catch(() => null);
+    const roleMentions = getStaffRoleIds().map(r => `<@&${r}>`).join(' ');
+    const short = `⚠️ Modmail error in module modmail.js
+${roleMentions}
+User: ${context.userId || '(n/a)'}
+Module: ${context.module || 'modmail'}
+
+${String(err && (err.stack || err))}`;
+
+    if (ch) {
+      await ch.send({ content: short }).catch(() => { console.error('failed to post staff alert', err, context); });
+    } else {
+      console.error('STAFF_CHAT_ID configured but channel not found', err, context);
+    }
+  } catch (e) {
+    console.error('notifyStaff helper failed', e);
   }
+}
 
   // safe reply helper for interactions
   async function safeReply(interaction, opts) {
