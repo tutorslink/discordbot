@@ -272,7 +272,7 @@ ${String(err && (err.stack || err))}`;
         )
       ];
 
-      const content = `Controls for your support chat, Ticket ID: modmail-${ticket.id}\n- Ping staff if you haven’t received a reply.\n- To close a ticket, please ask staff (users cannot close ticke[...]
+      const content = `Controls for your support chat, Ticket ID: modmail-${ticket.id}\n- Ping staff if you haven’t received a reply.\n- To close a ticket, please ask staff (users cannot close tickets).`;
 
       const sent = await dm.send({ content, components: rows }).catch(err => { throw err; });
       if (sent) { ticket.dmControlMessageId = sent.id; saveDB(); }
@@ -331,13 +331,30 @@ ${String(err && (err.stack || err))}`;
     try {
       if (!ticket) return;
       await postTranscript(ticket, closedByText);
-      try { const u = await client.users.fetch(ticket.userId).catch(() => null); if (u) await u.send(`Your staff conversation (Ticket ${ticket.shortId || ('#'+ticket.id)}) has been closed by staff. Tr[...]
+      try {
+        const u = await client.users.fetch(ticket.userId).catch(() => null);
+        if (u) await u.send(`Your staff conversation (Ticket ${ticket.shortId || ('#'+ticket.id)}) has been closed by staff. Transcript saved.`).catch(() => {});
+      } catch (e) {}
       const ch = await client.channels.fetch(ticket.channelId).catch(() => null);
       if (ch) {
-        try { await ch.send('Chat closed by staff, deleting channel...').catch(() => {}); await ch.delete('Modmail closed by staff'); } catch (e) { try { await ch.permissionOverwrites.edit(ticket.user[...]
+        try {
+          await ch.send('Chat closed by staff, deleting channel...').catch(() => {});
+          await ch.delete('Modmail closed by staff');
+        } catch (e) {
+          try { await ch.permissionOverwrites.edit(ticket.userId, { ViewChannel: false }).catch(() => {}); } catch (ee) {}
+        }
       }
       // delete DM control message if present
-      try { const u = await client.users.fetch(ticket.userId).catch(()=>null); if (u && ticket.dmControlMessageId) { const dm = await u.createDM().catch(()=>null); if (dm) { const m = await dm.message[...]
+      try {
+        const u2 = await client.users.fetch(ticket.userId).catch(()=>null);
+        if (u2 && ticket.dmControlMessageId) {
+          const dm = await u2.createDM().catch(()=>null);
+          if (dm) {
+            const m = await dm.messages.fetch(ticket.dmControlMessageId).catch(()=>null);
+            if (m) await m.delete().catch(()=>{});
+          }
+        }
+      } catch (e) {}
 
       // cleanup db entries
       try { delete db.modmail.byChannel[ticket.channelId]; } catch (e) {}
@@ -410,7 +427,7 @@ ${String(err && (err.stack || err))}`;
           if (ch) {
             for (const p of pending.messages) {
               ticket.messages.push({ who: `User ${userId}`, at: p.at || Date.now(), text: p.text || '', attachments: p.attachments || [] });
-              const sendRes = await ch.send({ content: `Message from <@${userId}>: ${p.text || ''}`, files: p.attachments && p.attachments.length ? p.attachments.slice() : [] }).catch(err => ({ __fail[...]
+              const sendRes = await ch.send({ content: `Message from <@${userId}>: ${p.text || ''}`, files: p.attachments && p.attachments.length ? p.attachments.slice() : [] }).catch(err => ({ __failed: true, error: err }));
               if (!sendRes || sendRes.__failed) {
                 console.warn('route pending to channel failed', sendRes && sendRes.error);
               } else if (p.messageId) {
@@ -463,7 +480,7 @@ ${String(err && (err.stack || err))}`;
               if (ch) {
                 for (const p of pending.messages) {
                   existingTicket.messages.push({ who: `User ${userId}`, at: p.at || Date.now(), text: p.text || '', attachments: p.attachments || [] });
-                  const sendRes = await ch.send({ content: `Message from <@${userId}>: ${p.text || ''}`, files: p.attachments && p.attachments.length ? p.attachments.slice() : [] }).catch(err => ({ __[...]
+                  const sendRes = await ch.send({ content: `Message from <@${userId}>: ${p.text || ''}`, files: p.attachments && p.attachments.length ? p.attachments.slice() : [] }).catch(err => ({ __failed: true, error: err }));
                   if (!sendRes || sendRes.__failed) {
                     console.warn('forward pending to existing ticket failed', sendRes && sendRes.error);
                   } else if (p.messageId) {
@@ -481,7 +498,7 @@ ${String(err && (err.stack || err))}`;
             }
             try { delete db.modmail.pending[userId]; saveDB(); } catch {}
             try { await sendOrUpdateUserControl(existingTicket); } catch (e) {}
-            try { const u = await client.users.fetch(userId).catch(() => null); if (u) await u.send(`Your message was sent to your existing ticket (Purpose: ${purposeLabel}).`).catch(() => {}); } catc[...]
+            try { const u = await client.users.fetch(userId).catch(() => null); if (u) await u.send(`Your message was sent to your existing ticket (Purpose: ${purposeLabel}).`).catch(() => {}); } catch (e) {}
             return;
           } else {
             // cleanup stale mapping
@@ -527,10 +544,10 @@ ${String(err && (err.stack || err))}`;
           if (pending && Array.isArray(pending.messages) && pending.messages.length) {
             for (const p of pending.messages) {
               ticket.messages.push({ who: `User ${userId}`, at: p.at || Date.now(), text: p.text || '', attachments: p.attachments || [] });
-              const sendRes = await channel.send({ content: `Message from <@${userId}>: ${p.text || ''}`, files: p.attachments && p.attachments.length ? p.attachments.slice() : [] }).catch(err => ({ _[...]
+              const sendRes = await channel.send({ content: `Message from <@${userId}>: ${p.text || ''}`, files: p.attachments && p.attachments.length ? p.attachments.slice() : [] }).catch(err => ({ __failed: true, error: err }));
               if (sendRes && sendRes.__failed) {
                 console.warn('forward pending to channel failed', sendRes.error);
-                try { const u = await client.users.fetch(userId).catch(() => null); if (u) await u.send('We created your ticket but could not forward your earlier message to staff due to a server erro[...]
+                try { const u = await client.users.fetch(userId).catch(() => null); if (u) await u.send('We created your ticket but could not forward your earlier message to staff due to a server error. Please resend it.').catch(() => {}); } catch (e) {}
               } else if (p.messageId) {
                 try {
                   const u = await client.users.fetch(userId).catch(() => null);
@@ -595,7 +612,7 @@ ${String(err && (err.stack || err))}`;
         const modal = new ModalBuilder().setCustomId(`mm_close_modal|${channelId}`).setTitle(`Close modmail ${channelId}`);
         const reasonInput = new TextInputBuilder().setCustomId('mm_close_reason').setLabel('Reason for closing (optional)').setStyle(TextInputStyle.Paragraph).setRequired(false);
         modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
-        try { await interaction.showModal(modal); } catch (e) { console.warn('showModal mm_close failed', e); await notifyStaff(e, { module: 'modmail.mm_close_showModal', userId: ticket.userId }); ret[...]
+        try { await interaction.showModal(modal); } catch (e) { console.warn('showModal mm_close failed', e); await notifyStaff(e, { module: 'modmail.mm_close_showModal', userId: ticket.userId }); return; }
         return;
       }
 
@@ -682,7 +699,7 @@ ${String(err && (err.stack || err))}`;
             .addOptions(routeOptions)
             .setRequired(true);
 
-          await message.channel.send({ content: 'You have multiple open tickets. Choose where to send your message:', components: [new ActionRowBuilder().addComponents(routeSelect)] }).catch(() => {})[...]
+          await message.channel.send({ content: 'You have multiple open tickets. Choose where to send your message:', components: [new ActionRowBuilder().addComponents(routeSelect)] }).catch(() => {});
           return;
         }
 
@@ -814,9 +831,9 @@ ${String(err && (err.stack || err))}`;
               // Send a button which opens the existing create-ad modal in index.js
               try {
                 const subjectKey = ticket.applicationSubject ? encodeURIComponent(ticket.applicationSubject) : 'other';
-                const btn = new ButtonBuilder().setCustomId(`open_createad_modal|${message.author.id}|${subjectKey}|modmail|${message.channel.id}`).setLabel('Open Create Ad').setStyle(ButtonStyle.Prim[...]
+                const btn = new ButtonBuilder().setCustomId(`open_createad_modal|${message.author.id}|${subjectKey}|modmail|${message.channel.id}`).setLabel('Open Create Ad').setStyle(ButtonStyle.Primary);
                 const row = new ActionRowBuilder().addComponents(btn);
-                await message.channel.send({ content: `Click the button to open the create-ad modal (subject: ${ticket.applicationSubject || 'N/A'}). After creating the ad, close the ticket with /clos[...]
+                await message.channel.send({ content: `Click the button to open the create-ad modal (subject: ${ticket.applicationSubject || 'N/A'}). After creating the ad, close the ticket with /close ${ticket.shortId || ticket.id}.`, components: [row] }).catch(() => {});
                 // leave ticket open so staff can click the button and complete the modal
                 try { delete ticket.awaiting; } catch (e) {}
                 saveDB();
@@ -876,13 +893,13 @@ ${String(err && (err.stack || err))}`;
             try {
               const guild = await client.guilds.fetch(GUILD_ID).catch(() => null);
               const transcriptCh = guild ? await guild.channels.fetch(MODMAIL_TRANSCRIPTS_CHANNEL_ID).catch(() => null) : null;
-              if (transcriptCh) {
-                await transcriptCh.send(`Could not deliver staff message to user ${ticket.userId} for modmail-${ticket.id}. Staff message by ${message.author.tag}: ${message.content || '(no text)'}`)..[...]
-              }
+                if (transcriptCh) {
+                  await transcriptCh.send(`Could not deliver staff message to user ${ticket.userId} for modmail-${ticket.id}. Staff message by ${message.author.tag}: ${message.content || '(no text)'}`).catch(() => {});
+                }
             } catch (e) { /* ignore */ }
           } else {
             // success, react with check mark
-            try { await message.react('✅').catch(async (e) => { /* if react fails, fallback to a small notice */ await message.channel.send('Message forwarded to user, but I could not add reaction.'[...]
+            try { await message.react('✅').catch(async (e) => { /* if react fails, fallback to a small notice */ await message.channel.send('Message forwarded to user, but I could not add reaction.').catch(() => {}); }); } catch (e) {}
           }
         } catch (e) {
           console.warn('Failed to DM user', e);
@@ -984,13 +1001,27 @@ ${String(err && (err.stack || err))}`;
         // Non-application tickets: proceed with existing immediate-close behavior
         try {
           await postTranscript(ticket, `${interaction.user.tag} (staff)`);
-          try { const u = await client.users.fetch(ticket.userId).catch(() => null); if (u) await u.send(`Your staff conversation (Ticket #${ticket.id}) has been closed by staff. Transcript saved.`).c[...]
+          try { const u = await client.users.fetch(ticket.userId).catch(() => null); if (u) await u.send(`Your staff conversation (Ticket #${ticket.id}) has been closed by staff. Transcript saved.`).catch(() => {}); } catch (e) {}
           const ch = await client.channels.fetch(channelId).catch(() => null);
           if (ch) {
-            try { await ch.send('Chat closed by staff, deleting channel...').catch(() => {}); await ch.delete('Modmail closed by staff'); } catch (e) { try { await ch.permissionOverwrites.edit(ticket.[...]
+            try {
+              await ch.send('Chat closed by staff, deleting channel...').catch(() => {});
+              await ch.delete('Modmail closed by staff');
+            } catch (e) {
+              try { await ch.permissionOverwrites.edit(ticket.userId, { ViewChannel: false }).catch(() => {}); } catch (ee) {}
+            }
           }
           // delete DM control message if present
-          try { const u = await client.users.fetch(ticket.userId).catch(()=>null); if (u && ticket.dmControlMessageId) { const dm = await u.createDM().catch(()=>null); if (dm) { const m = await dm.mes[...]
+          try {
+            const u2 = await client.users.fetch(ticket.userId).catch(()=>null);
+            if (u2 && ticket.dmControlMessageId) {
+              const dm = await u2.createDM().catch(()=>null);
+              if (dm) {
+                const m = await dm.messages.fetch(ticket.dmControlMessageId).catch(()=>null);
+                if (m) await m.delete().catch(()=>{});
+              }
+            }
+          } catch (e) {}
 
           delete db.modmail.byChannel[channelId];
           // remove mapping for this user+purpose
