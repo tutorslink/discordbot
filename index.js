@@ -823,6 +823,68 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton()) {
       const custom = interaction.customId || '';
 
+      // Handle View Full Details button
+      if (custom.startsWith('view_full_details|')) {
+        const subject = custom.split('|')[1];
+        
+        // Find the ad message to get full details
+        let adData = null;
+        for (const [msgId, data] of Object.entries(db.createAds || {})) {
+          if (data.embed && data.embed.title === subject) {
+            adData = data;
+            break;
+          }
+        }
+        
+        if (!adData || !adData.fullDetails) {
+          return interaction.reply({ content: 'Could not find ad details. Please try again later.', ephemeral: true });
+        }
+
+        const details = adData.fullDetails;
+        const policiesChannelMention = TUTOR_POLICIES_CHANNEL_ID ? `<#${TUTOR_POLICIES_CHANNEL_ID}>` : '#tutors-link-policies';
+        
+        // Build full details embed
+        let detailsMessage = '';
+        detailsMessage += `**Subject Level:** ${details.subjectLevel || 'N/A'}\n`;
+        detailsMessage += `**Subject Codes:** ${details.subjectCodes || 'N/A'}\n\n`;
+        
+        detailsMessage += `**Languages:** ${details.languages || 'N/A'}\n`;
+        detailsMessage += `**Class Type:** ${details.classType || 'N/A'}\n`;
+        detailsMessage += `**Class Duration:** ${details.classDuration || 'N/A'}\n`;
+        detailsMessage += `**Monthly Schedule:** ${details.monthlySchedule || 'N/A'}\n`;
+        detailsMessage += `**Price:** $${details.price || 'Contact for pricing'}\n`;
+        detailsMessage += `**Timezone:** ${details.timezone || 'N/A'}\n\n`;
+        
+        if (details.tutorMessage) {
+          detailsMessage += `**Message from Tutor:**\n${details.tutorMessage}\n\n`;
+        }
+        
+        if (details.testimonials) {
+          detailsMessage += `**Student Testimonials:**\n${details.testimonials}\n\n`;
+        }
+        
+        detailsMessage += `**Payment Terms:** ${details.paymentTerms || '100% upfront before classes begin'}\n\n`;
+        detailsMessage += `You'll be connected with the tutor once the initial payment is confirmed.\n\n`;
+        detailsMessage += `Make sure you follow ${policiesChannelMention} throughout the entire process.\n\n`;
+        detailsMessage += `Once you're ready to pay, DM <@${client.user.id}> and you will be guided to the next steps.`;
+        
+        const detailsEmbed = new EmbedBuilder()
+          .setTitle(`${subject} - Full Details`)
+          .setDescription(detailsMessage)
+          .setTimestamp();
+        
+        if (adData.embed && adData.embed.color) {
+          try { detailsEmbed.setColor(adData.embed.color); } catch (e) {}
+        }
+        
+        // Create button row with Talk to Tutors button for ephemeral message
+        const detailsRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
+        );
+        
+        return interaction.reply({ embeds: [detailsEmbed], components: [detailsRow], ephemeral: true });
+      }
+
       if (custom.startsWith('ad_enquire|')) {
         // unchanged
         const subject = custom.split('|')[1];
@@ -881,7 +943,8 @@ client.on('interactionCreate', async (interaction) => {
         const subjectKey = parts[2] || '';
         const origin = parts[3] || null;
         const originChannel = parts[4] || null;
-        const levelKey = normalizeCreateAdLevelKey(subjectKey) || 'other';
+        const levelKeyFromModmail = parts[5] || null; // For modmail: level is pre-selected
+        let levelKey = normalizeCreateAdLevelKey(subjectKey) || (levelKeyFromModmail ? normalizeCreateAdLevelKey(levelKeyFromModmail) : 'other');
         if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
           return interaction.reply({ content: 'Only the command invoker or staff may open this modal.', ephemeral: true });
         }
@@ -1594,42 +1657,28 @@ if (custom.startsWith('open_close_modal|')) {
                 }
             }
 
-            // Build message using template format (subject is shown as embed title)
+            // Build concise message for main embed (subject shown as embed title)
             let message = '';
-            message += `Subject Level: ${subjectLevel}\n\n`;
-            message += `Subject codes: ${subjectCodes}\n\n`;
-            message += `#  👨‍🏫 Tutor Details & Pricing\n\n`;
-            message += `Languages: ${languages}\n\n`;
-            message += `Class Type: ${classType}\n\n`;
-            message += `Class Duration: ${classDuration}\n\n`;
-            message += `Monthly Schedule: ${monthlySchedule}\n\n`;
-            message += `Price per Class (USD) for Group classes: $${price}\n\n`;
-            message += `Time zone: ${timezone}\n\n`;
-            message += `Want to talk to the available tutors for this subject?\n\n`;
-            message += `Press the "Talk to tutors!" button attached to this message and watch the magic happen!\n\n`;
-            
-            if (tutorMessage) {
-                message += `\`\`\`Message from tutor:\`\`\`\n${tutorMessage}\n\n`;
-            } else {
-                message += `\`\`\`Message from tutor:\`\`\`\n\n`;
-            }
-            
-            if (testimonials) {
-                message += `\`\`\`Student Testimonials:\`\`\`\n${testimonials}\n\n`;
-            } else {
-                message += `\`\`\`Student Testimonials:\`\`\`\n\n`;
-            }
-            
-            message += `\`\`\`💳 Payment Terms:  \`\`\`\n\n${paymentTerms}\n\n`;
-            message += `You'll be connected with the tutor once the initial payment is confirmed.\n\n`;
-            
-            // Get policies channel mention
-            const policiesChannelMention = TUTOR_POLICIES_CHANNEL_ID ? `<#${TUTOR_POLICIES_CHANNEL_ID}>` : '#tutors-link-policies';
-            message += `Make sure you follow ${policiesChannelMention} throughout the entire process.\n\n`;
-            
-            // Replace DM users with bot mention
-            message += `Once you're ready to pay, DM <@${client.user.id}> and you will be guided to the next steps.\n\n`;
-            message += `You can also DM <@${client.user.id}> for any problems or suggestions`;
+            message += `**Level:** ${subjectLevel}\n`;
+            message += `**Price:** $${price}\n`;
+            message += `**Timezone:** ${timezone}\n`;
+            message += `**Languages:** ${languages}\n\n`;
+            message += `Click "View Full Details" below for more information, or "Talk to Tutors!" to start a conversation.`;
+
+            // Store full details for ephemeral message
+            const fullDetailsMessage = {
+              subjectLevel,
+              subjectCodes,
+              languages,
+              classType,
+              classDuration,
+              monthlySchedule,
+              price,
+              timezone,
+              tutorMessage,
+              testimonials,
+              paymentTerms
+            };
 
             const embed = new EmbedBuilder().setTitle(subject).setDescription(message).setTimestamp();
             if (colorVal) embed.setColor(colorVal);
@@ -1638,6 +1687,7 @@ if (custom.startsWith('open_close_modal|')) {
             }
 
             const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`view_full_details|${subject}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
                 new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
             );
 
@@ -1672,7 +1722,8 @@ if (custom.startsWith('open_close_modal|')) {
                     tutorId: selectedTutorId,
                     level: levelKey,
                     categoryChannelId: CREATEAD_LEVEL_CHANNELS[levelKey] || CREATEAD_LEVEL_CHANNELS.other,
-                    categoryMessageId: categorySent ? categorySent.id : null
+                    categoryMessageId: categorySent ? categorySent.id : null,
+                    fullDetails: fullDetailsMessage
                 };
                 saveDB();
 
@@ -1731,7 +1782,9 @@ if (custom.startsWith('open_close_modal|')) {
 
       // editad modal submit
       if (interaction.customId && interaction.customId.startsWith('editad_modal|')) {
-        const messageId = interaction.customId.split('|')[1];
+        const parts = interaction.customId.split('|');
+        const messageId = parts[1];
+        const source = parts[2] || 'find'; // 'find' or 'category'
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit ads.', ephemeral: true });
         
         // Defer reply immediately to prevent interaction timeout
@@ -1748,10 +1801,47 @@ if (custom.startsWith('open_close_modal|')) {
             return interaction.editReply({ content: 'Subject selection is required.' });
         }
 
+        // Find the ad data to get the paired message IDs
+        let adData = null;
+        let findMessageId = null;
+        let categoryMessageId = null;
+        
+        if (source === 'find') {
+          findMessageId = messageId;
+          // Get ad data from find message
+          adData = db.createAds[messageId];
+          if (adData && adData.categoryMessageId) {
+            categoryMessageId = adData.categoryMessageId;
+          }
+        } else {
+          categoryMessageId = messageId;
+          // Find ad data by categoryMessageId
+          for (const [msgId, data] of Object.entries(db.createAds || {})) {
+            if (data.categoryMessageId === messageId) {
+              adData = data;
+              findMessageId = msgId;
+              break;
+            }
+          }
+        }
+
+        // Get both channels
+        const CREATEAD_LEVEL_CHANNELS = {
+          university: '1458552573999972586',
+          a_level: '1458552889130614814',
+          igcse: '1458552485433311323',
+          below_igcse: '1458552366508019956',
+          language: '1464287197560701162',
+          other: '1458552927454105832'
+        };
+        
         const findChannel = await interaction.guild.channels.fetch(FIND_A_TUTOR_CHANNEL_ID).catch(() => null);
-        if (!findChannel) return interaction.editReply({ content: 'Find channel not found' });
-        const msg = await findChannel.messages.fetch(messageId).catch(() => null);
-        if (!msg) return interaction.editReply({ content: 'Original message not found' });
+        let categoryChannel = null;
+        if (adData && adData.categoryChannelId) {
+          categoryChannel = await interaction.guild.channels.fetch(adData.categoryChannelId).catch(() => null);
+        }
+        
+        if (!findChannel && !categoryChannel) return interaction.editReply({ content: 'Could not find channels to update.' });
 
         // Get optional color
         let colorVal = null;
@@ -1761,10 +1851,10 @@ if (custom.startsWith('open_close_modal|')) {
             if (cleaned && /^#?[0-9a-fA-F]{6}$/.test(cleaned)) {
                 colorVal = cleaned.startsWith('#') ? cleaned : `#${cleaned}`;
             } else {
-                colorVal = db.createAds[msg.id]?.embed?.color || db.defaultEmbedColor || null;
+                colorVal = adData?.embed?.color || db.defaultEmbedColor || null;
             }
         } catch (e) {
-            colorVal = db.createAds[msg.id]?.embed?.color || db.defaultEmbedColor || null;
+            colorVal = adData?.embed?.color || db.defaultEmbedColor || null;
         }
 
         // Get optional role mention
@@ -1784,16 +1874,55 @@ if (custom.startsWith('open_close_modal|')) {
 
         const messageContent = roleMention || undefined;
 
-        try {
-          await msg.edit({ content: messageContent, embeds: [embed] }).catch(err => { console.error('edit ad failed', err); throw err; });
-          if (!db.createAds) db.createAds = {};
-          db.createAds[msg.id] = { channelId: findChannel.id, embed: { title: subject, description: messageText, color: colorVal } };
-          saveDB();
-        } catch (e) {
-          try { notifyStaffError(e, 'editad_modal submit', interaction); } catch (err) {}
-          return interaction.editReply({ content: 'Failed to edit ad message.' });
+        // Update find-a-tutor message if it exists
+        let findUpdateSuccess = false;
+        if (findChannel && findMessageId) {
+          try {
+            const findMsg = await findChannel.messages.fetch(findMessageId).catch(() => null);
+            if (findMsg) {
+              await findMsg.edit({ content: messageContent, embeds: [embed] }).catch(err => { console.error('edit ad in find channel failed', err); throw err; });
+              findUpdateSuccess = true;
+            }
+          } catch (e) {
+            console.warn('Failed to update find-a-tutor message', e);
+          }
         }
-        return interaction.editReply({ content: 'Ad updated.' });
+        
+        // Update category message if it exists
+        let categoryUpdateSuccess = false;
+        if (categoryChannel && categoryMessageId) {
+          try {
+            const categoryMsg = await categoryChannel.messages.fetch(categoryMessageId).catch(() => null);
+            if (categoryMsg) {
+              await categoryMsg.edit({ content: messageContent, embeds: [embed] }).catch(err => { console.error('edit ad in category channel failed', err); throw err; });
+              categoryUpdateSuccess = true;
+            }
+          } catch (e) {
+            console.warn('Failed to update category message', e);
+          }
+        }
+        
+        // Update database
+        if (findMessageId && adData) {
+          db.createAds[findMessageId] = { 
+            ...adData,
+            embed: { title: subject, description: messageText, color: colorVal } 
+          };
+          saveDB();
+        }
+        
+        let resultMsg = 'Ad updated';
+        if (findUpdateSuccess && categoryUpdateSuccess) {
+          resultMsg = 'Ad updated in both find-a-tutor and category channel.';
+        } else if (findUpdateSuccess) {
+          resultMsg = 'Ad updated in find-a-tutor. (Category channel update failed)';
+        } else if (categoryUpdateSuccess) {
+          resultMsg = 'Ad updated in category channel. (Find-a-tutor update failed)';
+        } else {
+          resultMsg = 'Failed to update ad in any channel.';
+        }
+        
+        return interaction.editReply({ content: resultMsg });
       }
 
       // sticky modal submit
@@ -2591,6 +2720,51 @@ if (custom.startsWith('open_close_modal|')) {
 // CLOSE command changed: send an ephemeral message with select menus and a button to open modal for reason
 if (cmd === 'close') {
   const code = interaction.options.getString('code', true);
+  
+  // Check if this is a modmail ticket (format: \d+[ACSP])
+  const modmailMatch = code.match(/^(\d+)([ACSPacsp])$/i);
+  if (modmailMatch) {
+    // This is a modmail ticket, route to modmail close handler
+    const ticketNum = modmailMatch[1];
+    const letter = modmailMatch[2].toUpperCase();
+    
+    if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can close tickets.', ephemeral: true });
+    
+    // Find the modmail ticket with matching ticketNum and letter
+    let foundTicket = null;
+    for (const [channelId, ticket] of Object.entries(db.modmail?.byChannel || {})) {
+      if (String(ticket.id) === ticketNum && String(ticket.letter).toUpperCase() === letter) {
+        foundTicket = ticket;
+        break;
+      }
+    }
+    
+    if (!foundTicket) {
+      return interaction.reply({ content: `Modmail ticket ${ticketNum}${letter} not found.`, ephemeral: true });
+    }
+    
+    // If this is a tutor_application ticket, start the acceptance flow
+    if (foundTicket.purpose === 'tutor_application') {
+      const modal = new ModalBuilder().setCustomId(`mm_close_modal|${foundTicket.channelId}`).setTitle(`Close modmail ${ticketNum}${letter}`);
+      const reasonInput = new TextInputBuilder().setCustomId('mm_close_reason').setLabel('Reason for closing (optional)').setStyle(TextInputStyle.Paragraph).setRequired(false);
+      modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
+      try { await interaction.showModal(modal); } catch (e) { console.warn('showModal mm_close failed', e); try { notifyStaffError(e, 'modmail close modal', interaction); } catch (err) {} return; }
+      return;
+    }
+    
+    // For other modmail types, close immediately
+    try {
+      foundTicket.closeReason = 'Staff closed via /close command';
+      await db._modmail_helpers.closeTicketByChannel(foundTicket.channelId, `${interaction.user.tag} (staff)`);
+      return interaction.reply({ content: `Modmail ticket ${ticketNum}${letter} closed.`, ephemeral: true });
+    } catch (e) {
+      console.warn('Failed to close modmail ticket', e);
+      try { notifyStaffError(e, 'modmail close', interaction); } catch (err) {}
+      return interaction.reply({ content: `Failed to close modmail ticket ${ticketNum}${letter}.`, ephemeral: true });
+    }
+  }
+  
+  // Regular ticket close flow
   const ticket = db.tickets[code];
   if (!ticket) return interaction.reply({ content: `Ticket ${code} not found.`, ephemeral: true });
   if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can close tickets.', ephemeral: true });
@@ -3070,15 +3244,61 @@ if (cmd === 'createad') {
       if (cmd === 'editad') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit ads.', ephemeral: true });
         const messageId = interaction.options.getString('messageid', true);
+        
+        // First, check if this is a category channel message ID
+        let adData = null;
+        let foundInFindChannel = false;
+        let foundInCategoryChannel = false;
+        
+        // Check find-a-tutor channel
         const findChannel = await interaction.guild.channels.fetch(FIND_A_TUTOR_CHANNEL_ID).catch(() => null);
-        if (!findChannel) return interaction.reply({ content: 'Find-a-tutor channel not found.', ephemeral: true });
-        const msg = await findChannel.messages.fetch(messageId).catch(() => null);
-        if (!msg) return interaction.reply({ content: `Message ${messageId} not found in find-a-tutor.`, ephemeral: true });
+        let msg = null;
+        if (findChannel) {
+          msg = await findChannel.messages.fetch(messageId).catch(() => null);
+          if (msg) {
+            foundInFindChannel = true;
+            adData = db.createAds[messageId];
+          }
+        }
+        
+        // If not found in find channel, search all category channels
+        if (!msg) {
+          const CREATEAD_LEVEL_CHANNELS = {
+            university: '1458552573999972586',
+            a_level: '1458552889130614814',
+            igcse: '1458552485433311323',
+            below_igcse: '1458552366508019956',
+            language: '1464287197560701162',
+            other: '1458552927454105832'
+          };
+          
+          for (const [levelKey, channelId] of Object.entries(CREATEAD_LEVEL_CHANNELS)) {
+            const categoryCh = await interaction.guild.channels.fetch(channelId).catch(() => null);
+            if (categoryCh) {
+              const categoryMsg = await categoryCh.messages.fetch(messageId).catch(() => null);
+              if (categoryMsg) {
+                msg = categoryMsg;
+                foundInCategoryChannel = true;
+                
+                // Find the ad data by categoryMessageId
+                for (const [msgId, data] of Object.entries(db.createAds || {})) {
+                  if (data.categoryMessageId === messageId) {
+                    adData = data;
+                    break;
+                  }
+                }
+                break;
+              }
+            }
+          }
+        }
+        
+        if (!msg) return interaction.reply({ content: `Message ${messageId} not found in find-a-tutor or any category channel.`, ephemeral: true });
 
         const embed = msg.embeds && msg.embeds.length ? msg.embeds[0] : null;
         const preTitle = embed?.title || '';
         const preDesc = embed?.description || '';
-        const preColor = db.createAds[msg.id]?.embed?.color || null;
+        const preColor = adData?.embed?.color || null;
         
         // Extract role mention from message content if exists
         let preRoleId = '';
@@ -3115,7 +3335,7 @@ if (cmd === 'createad') {
             .setLabel('Subject')
             .setStringSelectMenuComponent(subjectSelect);
 
-        const modal = new ModalBuilder().setCustomId(`editad_modal|${messageId}`).setTitle(`Edit ad ${messageId}`);
+        const modal = new ModalBuilder().setCustomId(`editad_modal|${messageId}|${foundInCategoryChannel ? 'category' : 'find'}`).setTitle(`Edit ad ${messageId}`);
         const msgInput = new TextInputBuilder().setCustomId('edit_ad_message').setLabel('Ad message').setStyle(TextInputStyle.Paragraph).setRequired(true).setValue((preDesc || '').substring(0, 4000));
         
         const colorInput = new TextInputBuilder()
