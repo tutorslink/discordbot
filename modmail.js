@@ -239,7 +239,10 @@ ${String(err && (err.stack || err))}`;
 
       return { channel, ticketNum, code };
     } catch (e) {
-      await notifyStaff(e, { module: 'modmail.createModmailChannel', userId });
+      // Don't notify staff for cooldown errors - they're expected behavior
+      if (!e.message || !e.message.startsWith('COOLDOWN:')) {
+        await notifyStaff(e, { module: 'modmail.createModmailChannel', userId });
+      }
       throw e;
     }
   }
