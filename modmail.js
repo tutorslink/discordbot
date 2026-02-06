@@ -540,6 +540,7 @@ ${String(err && (err.stack || err))}`;
             const userMessage = e.message.substring('COOLDOWN:'.length);
             try {
               const u = await client.users.fetch(userId).catch(() => null);
+              // Attempt to DM user - may fail if user has DMs disabled
               if (u) await u.send(userMessage).catch(() => {});
             } catch (dmErr) {
               console.warn('Failed to send cooldown DM', dmErr);
@@ -551,6 +552,7 @@ ${String(err && (err.stack || err))}`;
           const errorMsg = e.message || 'Failed to create channel, staff have been notified. Please try again later.';
           try {
             const u = await client.users.fetch(userId).catch(() => null);
+            // Attempt to DM user - may fail if user has DMs disabled
             if (u) await u.send(errorMsg).catch(() => {});
           } catch (dmErr) {
             console.warn('Failed to send error DM', dmErr);
