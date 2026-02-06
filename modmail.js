@@ -86,6 +86,17 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
     } catch { return false; }
   }
 
+  // Check if user has admin permissions or is staff (bypasses cooldowns)
+  function canBypassCooldown(member) {
+    try {
+      if (!member) return false;
+      // Check for Administrator permission
+      if (member.permissions?.has && member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
+      // Check if they are staff
+      return isStaff(member);
+    } catch { return false; }
+  }
+
   // notify staff helper: uses provided notifyError callback if present, else sends in STAFF_CHAT_ID
   // Replace the notifyStaff function body (or at least the `short` string build) with this:
 
@@ -162,7 +173,7 @@ ${String(err && (err.stack || err))}`;
   saveDB();
 
   // create modmail channel with robust overwrites for multiple staff roles
-  async function createModmailChannel(userId, purposeKey, purposeCategoryId = null) {
+  async function createModmailChannel(userId, purposeKey, purposeCategoryId = null, member = null) {
     try {
       const pKey = String(purposeKey || '').trim() || 'unknown';
 
@@ -174,12 +185,17 @@ ${String(err && (err.stack || err))}`;
         throw new Error('You already have an active ticket for this category.');
       }
 
-      // 120s cooldown after creation per user+purpose
+      // 120s cooldown after creation per user+purpose (bypassed for staff/admins)
       const now = Date.now();
       const cooldownKey = `${userId}:${pKey}`;
       const last = modmailCreationCooldown[cooldownKey] || 0;
-      if (now - last < 120 * 1000) {
-        throw new Error('Please wait a bit before creating another ticket (cooldown)');
+      const cooldownMs = 120 * 1000;
+      
+      // Only apply cooldown if user is not staff/admin
+      if (!canBypassCooldown(member) && (now - last < cooldownMs)) {
+        const remainingMs = cooldownMs - (now - last);
+        const remainingSec = Math.ceil(remainingMs / 1000);
+        throw new Error(`COOLDOWN:Please wait ${remainingSec} seconds before creating another ticket in this category.`);
       }
 
       const guild = await client.guilds.fetch(GUILD_ID).catch(() => null);
@@ -514,10 +530,29 @@ ${String(err && (err.stack || err))}`;
         
         let created = null;
         try {
-          created = await createModmailChannel(userId, selectedPurpose, purposeCategoryId);
+          created = await createModmailChannel(userId, selectedPurpose, purposeCategoryId, interaction.member);
         } catch (e) {
-          // Creation blocked or failed, let user know
-          await safeReply(interaction, { content: 'Failed to create channel, staff have been notified. Please try again later.', ephemeral: true });
+          // Check if this is a cooldown error
+          if (e.message && e.message.startsWith('COOLDOWN:')) {
+            const userMessage = e.message.substring('COOLDOWN:'.length);
+            try {
+              const u = await client.users.fetch(userId).catch(() => null);
+              if (u) await u.send(userMessage).catch(() => {});
+            } catch (dmErr) {
+              console.warn('Failed to send cooldown DM', dmErr);
+            }
+            await safeReply(interaction, { content: userMessage, ephemeral: true });
+            return;
+          }
+          // Creation blocked or failed for other reason, let user know
+          const errorMsg = e.message || 'Failed to create channel, staff have been notified. Please try again later.';
+          try {
+            const u = await client.users.fetch(userId).catch(() => null);
+            if (u) await u.send(errorMsg).catch(() => {});
+          } catch (dmErr) {
+            console.warn('Failed to send error DM', dmErr);
+          }
+          await safeReply(interaction, { content: errorMsg, ephemeral: true });
           return;
         }
         if (!created) return safeReply(interaction, { content: 'Failed to create channel, try again later.', ephemeral: true });
