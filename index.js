@@ -3610,13 +3610,30 @@ client.on('messageCreate', async (message) => {
             ticket.awaitingApproval = true;
             saveDB();
 
-            const row = new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId(`approve|${code}`).setLabel('Approve').setStyle(ButtonStyle.Success),
-              new ButtonBuilder().setCustomId(`deny|${code}`).setLabel('Deny').setStyle(ButtonStyle.Danger)
-            );
-
-            const content = `Please do not type anything else until staff approves your message, as the tutors will only be able to see your first message.`;
-            await message.channel.send({ content, components: [row] }).catch(() => {});
+            // Auto-approve and notify tutors when student sends first message
+            try {
+              const firstMessageText = message.content && message.content.trim().length > 0 
+                ? message.content 
+                : (attachments.length ? `Attachment(s): ${attachments.join(' ')}` : '(no message found)');
+              
+              await postToTutorsFeed(message.guild, code, ticket.subject, firstMessageText, ticket);
+              ticket.approved = true;
+              delete ticket.awaitingApproval;
+              saveDB();
+              
+              await message.channel.send('Tutors have been notified of your request!').catch(() => {});
+            } catch (e) {
+              console.error('auto-approve and notify tutors failed', e);
+              try { await notifyStaffError(e, 'auto-approve and notify tutors', message); } catch (err) {}
+              
+              // Fallback to manual approval if auto-approval fails
+              const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`approve|${code}`).setLabel('Approve').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`deny|${code}`).setLabel('Deny').setStyle(ButtonStyle.Danger)
+              );
+              const content = `Failed to auto-notify tutors. Staff will manually approve your message.`;
+              await message.channel.send({ content, components: [row] }).catch(() => {});
+            }
             return;
           }
 
