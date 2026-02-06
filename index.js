@@ -3624,14 +3624,14 @@ client.on('messageCreate', async (message) => {
               await message.channel.send('Tutors have been notified of your request!').catch(() => {});
             } catch (e) {
               console.error('auto-approve and notify tutors failed', e);
-              try { await notifyStaffError(e, 'auto-approve and notify tutors', message); } catch (err) {}
+              try { await notifyStaffError(e, 'auto-approve and notify tutors', message); } catch (err) { console.error('notifyStaffError also failed', err); }
               
               // Fallback to manual approval if auto-approval fails
               const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`approve|${code}`).setLabel('Approve').setStyle(ButtonStyle.Success),
                 new ButtonBuilder().setCustomId(`deny|${code}`).setLabel('Deny').setStyle(ButtonStyle.Danger)
               );
-              const content = `Failed to auto-notify tutors. Staff will manually approve your message.`;
+              const content = `Failed to auto-notify tutors. Staff will review and manually approve your request. Please wait for approval.`;
               await message.channel.send({ content, components: [row] }).catch(() => {});
             }
             return;
