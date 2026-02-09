@@ -1223,68 +1223,68 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       // FIX: Add the missing button handler for opening the close modal
-if (custom.startsWith('open_close_modal|')) {
-  const code = custom.split('|')[1];
-  console.log(`[OPEN CLOSE MODAL] Button clicked for ticket ${code}`);
-  const ticket = db.tickets[code];
-  if (!ticket) {
-    console.log(`[OPEN CLOSE MODAL] Ticket ${code} not found`);
-    return interaction.reply({ content: 'Ticket not found.', ephemeral: true });
-  }
-  if (!isStaff(interaction.member)) {
-    console.log(`[OPEN CLOSE MODAL] User ${interaction.user.id} is not staff`);
-    return interaction.reply({ content: 'Only staff can do this.', ephemeral: true });
-  }
-  
-  // Check if selections were made
-  if (!ticket._closeFlowTemp) {
-    console.log(`[OPEN CLOSE MODAL] No temp data found for ticket ${code}`);
-    return interaction.reply({ content: 'Please make selections first before providing a reason.', ephemeral: true });
-  }
-  
-  console.log(`[OPEN CLOSE MODAL] Temp data for ticket ${code}:`, JSON.stringify(ticket._closeFlowTemp));
-  
-  // Validate tutor teaches the selected subject
-  const temp = ticket._closeFlowTemp;
-  if (temp.hired === 'yes' && temp.hiredTutorId && temp.hiredTutorId !== 'none' && temp.assignedSubject) {
-    const selectedSubject = temp.assignedSubject === 'ticket_subject' ? ticket.subject : temp.assignedSubject;
-    const tutorSubjects = [];
-    for (const [subj, tutors] of Object.entries(db.subjectTutors)) {
-      if (tutors.includes(temp.hiredTutorId)) {
-        tutorSubjects.push(subj);
+      if (custom.startsWith('open_close_modal|')) {
+        const code = custom.split('|')[1];
+        console.log(`[OPEN CLOSE MODAL] Button clicked for ticket ${code}`);
+        const ticket = db.tickets[code];
+        if (!ticket) {
+          console.log(`[OPEN CLOSE MODAL] Ticket ${code} not found`);
+          return interaction.reply({ content: 'Ticket not found.', ephemeral: true });
+        }
+        if (!isStaff(interaction.member)) {
+          console.log(`[OPEN CLOSE MODAL] User ${interaction.user.id} is not staff`);
+          return interaction.reply({ content: 'Only staff can do this.', ephemeral: true });
+        }
+        
+        // Check if selections were made
+        if (!ticket._closeFlowTemp) {
+          console.log(`[OPEN CLOSE MODAL] No temp data found for ticket ${code}`);
+          return interaction.reply({ content: 'Please make selections first before providing a reason.', ephemeral: true });
+        }
+        
+        console.log(`[OPEN CLOSE MODAL] Temp data for ticket ${code}:`, JSON.stringify(ticket._closeFlowTemp));
+        
+        // Validate tutor teaches the selected subject
+        const temp = ticket._closeFlowTemp;
+        if (temp.hired === 'yes' && temp.hiredTutorId && temp.hiredTutorId !== 'none' && temp.assignedSubject) {
+          const selectedSubject = temp.assignedSubject === 'ticket_subject' ? ticket.subject : temp.assignedSubject;
+          const tutorSubjects = [];
+          for (const [subj, tutors] of Object.entries(db.subjectTutors)) {
+            if (tutors.includes(temp.hiredTutorId)) {
+              tutorSubjects.push(subj);
+            }
+          }
+          
+          if (!tutorSubjects.includes(selectedSubject)) {
+            return interaction.reply({ content: `Error: This tutor does not teach ${selectedSubject}. Please select a different tutor or subject.`, ephemeral: true });
+          }
+        }
+        
+        // Open modal for close reason
+        const modal = new ModalBuilder()
+          .setCustomId(`close_ticket_modal|${code}`)
+          .setTitle(`Close Ticket ${code}`);
+        
+        const reasonInput = new TextInputBuilder()
+          .setCustomId('close_reason')
+          .setLabel('Reason for closing')
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+          .setPlaceholder('Enter the reason for closing this ticket...');
+        
+        modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
+        
+        try {
+          console.log(`[OPEN CLOSE MODAL] Attempting to show modal for ticket ${code}`);
+          await interaction.showModal(modal);
+          console.log(`[OPEN CLOSE MODAL] Modal shown successfully for ticket ${code}`);
+        } catch (err) {
+          console.error('[OPEN CLOSE MODAL] showModal failed', err);
+          try { notifyStaffError(err, 'open_close_modal showModal', interaction); } catch (e) {}
+          await interaction.reply({ content: 'Could not open modal, try again.', ephemeral: true });
+        }
+        return;
       }
-    }
-    
-    if (!tutorSubjects.includes(selectedSubject)) {
-      return interaction.reply({ content: `Error: This tutor does not teach ${selectedSubject}. Please select a different tutor or subject.`, ephemeral: true });
-    }
-  }
-  
-  // Open modal for close reason
-  const modal = new ModalBuilder()
-    .setCustomId(`close_ticket_modal|${code}`)
-    .setTitle(`Close Ticket ${code}`);
-  
-  const reasonInput = new TextInputBuilder()
-    .setCustomId('close_reason')
-    .setLabel('Reason for closing')
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(true)
-    .setPlaceholder('Enter the reason for closing this ticket...');
-  
-  modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
-  
-  try {
-    console.log(`[OPEN CLOSE MODAL] Attempting to show modal for ticket ${code}`);
-    await interaction.showModal(modal);
-    console.log(`[OPEN CLOSE MODAL] Modal shown successfully for ticket ${code}`);
-  } catch (err) {
-    console.error('[OPEN CLOSE MODAL] showModal failed', err);
-    try { notifyStaffError(err, 'open_close_modal showModal', interaction); } catch (e) {}
-    await interaction.reply({ content: 'Could not open modal, try again.', ephemeral: true });
-  }
-  return;
-}
     } // Close button block
     
     // MODAL SUBMITS and select menus handling etc
