@@ -67,6 +67,26 @@ setInterval(() => {
   }
 }, 60000); // Check every minute
 
+// Simple rate limiter for auth endpoints: tracks request counts per IP
+const rateLimitMap = new Map(); // ip -> { count, resetAt }
+function checkRateLimit(ip, maxRequests = 10, windowMs = 60000) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
+    return false; // not limited
+  }
+  entry.count += 1;
+  if (entry.count > maxRequests) return true; // limited
+  return false;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, data] of rateLimitMap.entries()) {
+    if (now > data.resetAt) rateLimitMap.delete(ip);
+  }
+}, 60000);
+
 // Load metadata
 function loadMetadata() {
   try {
@@ -267,6 +287,67 @@ export function setupWebServer(app) {
     }
   });
   
+  // API: Get Discord OAuth2 authorization URL
+  app.get('/api/discord-auth-url', (req, res) => {
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    const redirectUri = process.env.DISCORD_REDIRECT_URI || `${req.protocol}://${req.get('host')}/discordAuthCallback`;
+    if (!clientId) {
+      return res.status(500).json({ error: 'Discord client ID not configured' });
+    }
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'identify email'
+    });
+    const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
+    res.json({ url });
+  });
+
+  // Discord OAuth2 callback
+  app.get('/discordAuthCallback', async (req, res) => {
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    if (checkRateLimit(ip, 10, 60000)) {
+      return res.status(429).send('Too many requests. Please try again later.');
+    }
+    const { code } = req.query;
+    if (!code) {
+      return res.status(400).send('Missing authorization code');
+    }
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+    const redirectUri = process.env.DISCORD_REDIRECT_URI || `${req.protocol}://${req.get('host')}/discordAuthCallback`;
+    if (!clientId || !clientSecret) {
+      return res.status(500).send('Discord OAuth2 not configured');
+    }
+    try {
+      // Exchange code for access token
+      const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: redirectUri
+        }).toString()
+      });
+      if (!tokenResponse.ok) {
+        const err = await tokenResponse.text();
+        console.warn('Discord token exchange failed', err);
+        return res.status(502).send('Failed to exchange Discord authorization code');
+      }
+      const tokenData = await tokenResponse.json();
+      // Mint a short-lived auth token for the session
+      const sessionToken = generateAuthToken();
+      res.redirect(`/?token=${encodeURIComponent(sessionToken)}`);
+    } catch (e) {
+      console.error('discordAuthCallback error', e);
+      res.status(500).send('Internal server error during Discord authentication');
+    }
+  });
+
   // Legacy route for direct file access (for backward compatibility)
   app.get('/recordings/:id/:filename', (req, res) => {
     const { id, filename } = req.params;
