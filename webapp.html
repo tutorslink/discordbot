@@ -20,6 +20,9 @@
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Authenticate</button>
             </form>
+            <div style="margin-top: 12px; text-align: center;">
+                <button id="discord-auth-btn" class="btn btn-secondary" style="width: 100%;">Continue with Discord</button>
+            </div>
         </div>
     </div>
 
@@ -105,6 +108,21 @@
             const token = document.getElementById('auth-token').value.trim();
             if (token) {
                 authenticate(token);
+            }
+        });
+
+        // Discord auth button handler
+        document.getElementById('discord-auth-btn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/discord-auth-url');
+                if (response.ok) {
+                    const { url } = await response.json();
+                    window.location.href = url;
+                } else {
+                    showError('Discord authentication is not configured.');
+                }
+            } catch (error) {
+                showError('Failed to initiate Discord authentication.');
             }
         });
 

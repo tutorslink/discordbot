@@ -84,7 +84,10 @@ const {
   TUTOR_POLICIES_CHANNEL_ID,
   MODMAIL_CATEGORY_ID,
   MODMAIL_TRANSCRIPTS_CHANNEL_ID,
-  BUMP_CHANNEL_ID // Optional: Channel ID where bump tracking should listen (if not set, listens in all channels)
+  BUMP_CHANNEL_ID, // Optional: Channel ID where bump tracking should listen (if not set, listens in all channels)
+  ADS_CHANNEL_ID,
+  SYNC_SECRET,
+  SYNC_WEBHOOK_URL
 } = process.env;
 
 if (!BOT_TOKEN || !GUILD_ID || !STAFF_ROLE_ID || !FIND_A_TUTOR_CHANNEL_ID || !TUTORS_FEED_CHANNEL_ID) {
@@ -3664,10 +3667,47 @@ client.on('messageCreate', async (message) => {
         }
       }
     }
+
+    // Ads channel sync
+    if (ADS_CHANNEL_ID && SYNC_WEBHOOK_URL && String(message.channel?.id) === String(ADS_CHANNEL_ID)) {
+      try {
+        await fetch(SYNC_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-TL-Sync-Secret': SYNC_SECRET || '' },
+          body: JSON.stringify({ event: 'messageCreate', messageId: message.id, channelId: message.channel.id, authorId: message.author?.id, content: message.content, embeds: message.embeds.map(e => e.toJSON()), attachments: [...message.attachments.values()].map(a => ({ id: a.id, url: a.url, name: a.name, size: a.size })) })
+        });
+      } catch (e) { console.warn('ads sync messageCreate failed', e); }
+    }
   } catch (e) {
     console.warn('messageCreate handler error', e);
     try { await notifyStaffError(e, 'messageCreate handler', message); } catch (err) { console.warn('notifyStaffError failed', err); }
   }
+});
+
+// messageUpdate handler — sync edits in ADS_CHANNEL_ID
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+  if (!ADS_CHANNEL_ID || !SYNC_WEBHOOK_URL) return;
+  if (String(newMessage.channel?.id) !== String(ADS_CHANNEL_ID)) return;
+  try {
+    await fetch(SYNC_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-TL-Sync-Secret': SYNC_SECRET || '' },
+      body: JSON.stringify({ event: 'messageUpdate', messageId: newMessage.id, channelId: newMessage.channel.id, authorId: newMessage.author?.id, content: newMessage.content, embeds: (newMessage.embeds || []).map(e => e.toJSON()), attachments: [...(newMessage.attachments?.values() || [])].map(a => ({ id: a.id, url: a.url, name: a.name, size: a.size })) })
+    });
+  } catch (e) { console.warn('ads sync messageUpdate failed', e); }
+});
+
+// messageDelete handler — sync deletions in ADS_CHANNEL_ID
+client.on('messageDelete', async (message) => {
+  if (!ADS_CHANNEL_ID || !SYNC_WEBHOOK_URL) return;
+  if (String(message.channel?.id) !== String(ADS_CHANNEL_ID)) return;
+  try {
+    await fetch(SYNC_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-TL-Sync-Secret': SYNC_SECRET || '' },
+      body: JSON.stringify({ event: 'messageDelete', messageId: message.id, channelId: message.channel.id })
+    });
+  } catch (e) { console.warn('ads sync messageDelete failed', e); }
 });
 
 // Review reminder worker
