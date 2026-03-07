@@ -66,37 +66,92 @@ function saveDB(db) {
 }
 
 /**
+ * Infers the CREATEAD_LEVEL_CONFIG key from the subject name prefix when no
+ * explicit levelKey is stored (mirrors detectLevelFromSubject in index.js).
+ */
+function detectLevelFromSubject(subjectName) {
+  const s = String(subjectName || '').toLowerCase().trimStart();
+  if (/^(igcse\/gcse|igcse\/o-level|igcse|gcse)/.test(s)) return 'igcse';
+  if (/^(as\/a\s+level|as\/al|a\s+level|a-level)/.test(s)) return 'a_level';
+  if (/^(below\s+igcse|below-igcse|below_igcse)/.test(s)) return 'below_igcse';
+  if (/^university/.test(s)) return 'university';
+  if (/^language/.test(s)) return 'language';
+  return null;
+}
+
+/**
  * Mirrors the findSubjectChannel() function in index.js.
  * Locates the correct text channel within a category for the given subject.
+ *
+ * Fallback strategy (tried in order):
+ *  1. prefix + bare name in the configured category        (e.g. ig-maths)
+ *  2. bare name only in the configured category            (e.g. mandarin-chinese)
+ *  3. Re-detect level from subject name and retry 1 & 2   (handles missing level field)
+ *  4. Try every other level config                         (last resort)
  */
 async function findSubjectChannel(guild, levelKey, subjectName) {
-  const config = CREATEAD_LEVEL_CONFIG[levelKey] || CREATEAD_LEVEL_CONFIG.other;
+  // Inner helper: search one level config for the channel
+  const tryLevel = (key) => {
+    const config = CREATEAD_LEVEL_CONFIG[key];
+    if (!config) return null;
 
-  const category = guild.channels.cache.find(
-    c => c.type === ChannelType.GuildCategory &&
-         c.name.toLowerCase() === config.categoryName.toLowerCase()
-  );
-  if (!category) {
-    if (process.env.DEBUG_MIGRATEADS) console.debug(`[migrateads] category not found: "${config.categoryName}" for level="${levelKey}"`);
-    return null;
-  }
+    const category = guild.channels.cache.find(
+      c => c.type === ChannelType.GuildCategory &&
+           c.name.toLowerCase() === config.categoryName.toLowerCase()
+    );
+    if (!category) {
+      if (process.env.DEBUG_MIGRATEADS) console.debug(`[migrateads] category not found: "${config.categoryName}" for level="${key}"`);
+      return null;
+    }
 
-  // Normalise subject name: strip known level prefixes (including slash variants),
-  // lowercase, spaces → hyphens
-  const bare = subjectName
-    .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language)\s+/i, '')
-    .toLowerCase()
-    .replace(/\s+/g, '-');
+    // Normalise subject: strip known level prefixes, lowercase, spaces→hyphens
+    const bare = subjectName
+      .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language)\s+/i, '')
+      .toLowerCase()
+      .replace(/\s+/g, '-');
 
-  const targetName = (config.prefix + bare).toLowerCase();
+    const targetName = (config.prefix + bare).toLowerCase();
 
-  const channel = guild.channels.cache.find(
-    c => c.parentId === category.id && c.name.toLowerCase() === targetName
-  );
+    // Primary: prefix + bare name
+    let channel = guild.channels.cache.find(
+      c => c.parentId === category.id && c.name.toLowerCase() === targetName
+    );
+
+    // Fallback: bare name without prefix (handles channels that omit the standard prefix)
+    if (!channel && config.prefix) {
+      channel = guild.channels.cache.find(
+        c => c.parentId === category.id && c.name.toLowerCase() === bare
+      );
+    }
+
+    if (!channel) {
+      if (process.env.DEBUG_MIGRATEADS) console.debug(`[migrateads] channel not found: "${targetName}" (or bare "${bare}") in category "${config.categoryName}"`);
+    }
+    return channel || null;
+  };
+
+  // 1. Try the supplied levelKey first
+  let channel = tryLevel(levelKey);
+
+  // 2. If not found and levelKey was 'other' (or missing), try auto-detecting
+  //    the level from the subject name (handles ads without a stored level).
   if (!channel) {
-    if (process.env.DEBUG_MIGRATEADS) console.debug(`[migrateads] channel not found: "${targetName}" in category "${config.categoryName}"`);
-    return null;
+    const detected = detectLevelFromSubject(subjectName);
+    if (detected && detected !== levelKey) {
+      channel = tryLevel(detected);
+    }
   }
+
+  // 3. Last resort: walk every remaining level config
+  if (!channel) {
+    for (const k of Object.keys(CREATEAD_LEVEL_CONFIG)) {
+      if (k === levelKey) continue;
+      channel = tryLevel(k);
+      if (channel) break;
+    }
+  }
+
+  if (!channel) return null;
 
   try {
     await channel.permissionOverwrites.edit(guild.roles.everyone, { ViewChannel: true });
@@ -151,7 +206,9 @@ async function main() {
   for (const [messageId, adData] of toMigrate) {
     try {
       const subject = adData.embed && adData.embed.title ? adData.embed.title : null;
-      const levelKey = adData.level || 'other';
+      // Fall back to auto-detecting the level from the subject name so that ads
+      // created before the level field was introduced are still routed correctly.
+      const levelKey = adData.level || detectLevelFromSubject(subject) || 'other';
       const tutorId = adData.tutorId || null;
       const embedDescription = adData.embed && adData.embed.description ? adData.embed.description : '';
 
