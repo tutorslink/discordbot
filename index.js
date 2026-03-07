@@ -38,7 +38,8 @@ const {
   PermissionsBitField,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
-  LabelBuilder
+  LabelBuilder,
+  AttachmentBuilder
 } = pkg;
 
 // ---------------- WEB SERVER SETUP ----------------
@@ -832,7 +833,8 @@ async function registerCommands() {
         { name: 'force', description: 'Re-post even if a category message already exists', type: 5, required: false }
       ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
-    }
+    },
+    { name: 'exportchannels', description: 'Export all guild categories and channels as JSON (staff only)', default_member_permissions: PermissionFlagsBits.ManageMessages.toString() }
   ];
 
   const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
@@ -3605,6 +3607,65 @@ if (cmd === 'createad') {
         const summary = [`Migration complete!`, `✅ Migrated: ${migrated}`, `⏭️ Skipped: ${skipped}`];
         if (errors.length > 0) summary.push(`❌ Errors: ${errors.length} (check logs)`);
         return interaction.editReply({ content: summary.join('\n') });
+      }
+
+      if (cmd === 'exportchannels') {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can use this command.', ephemeral: true });
+        await interaction.deferReply({ ephemeral: true }).catch(err => console.warn('exportchannels: deferReply failed', err));
+
+        const guild = interaction.guild;
+        const allChannels = guild.channels.cache;
+
+        // Build category map
+        const categoriesMap = {};
+        for (const [id, ch] of allChannels) {
+          if (ch.type === ChannelType.GuildCategory) {
+            categoriesMap[id] = { id, name: ch.name, position: ch.position ?? null, channels: [] };
+          }
+        }
+        const uncategorizedChannels = [];
+
+        for (const [id, ch] of allChannels) {
+          if (ch.type === ChannelType.GuildCategory) continue;
+          const entry = { id, name: ch.name, type: ch.type, parentId: ch.parentId || null, position: ch.position ?? null };
+          if (ch.parentId && categoriesMap[ch.parentId]) {
+            categoriesMap[ch.parentId].channels.push(entry);
+          } else {
+            uncategorizedChannels.push(entry);
+          }
+        }
+
+        // Sort channels within each category by position
+        for (const cat of Object.values(categoriesMap)) {
+          cat.channels.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+        }
+        uncategorizedChannels.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+
+        const output = {
+          guildId: guild.id,
+          guildName: guild.name,
+          exportedAt: new Date().toISOString(),
+          categories: Object.values(categoriesMap).sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
+          uncategorized: uncategorizedChannels
+        };
+
+        const json = JSON.stringify(output, null, 2);
+
+        // Try to send as a file attachment; fall back to chunked text
+        try {
+          const buf = Buffer.from(json, 'utf8');
+          const attachment = new AttachmentBuilder(buf, { name: 'channels-export.json' });
+          return interaction.editReply({ files: [attachment] });
+        } catch (e) {
+          console.warn('exportchannels: attachment send failed, falling back to chunked text', e);
+          const chunks = [];
+          for (let i = 0; i < json.length; i += 1900) chunks.push(json.slice(i, i + 1900));
+          await interaction.editReply({ content: `\`\`\`json\n${chunks[0]}\n\`\`\`` });
+          for (let i = 1; i < chunks.length; i++) {
+            await interaction.followUp({ content: `\`\`\`json\n${chunks[i]}\n\`\`\``, ephemeral: true });
+          }
+          return;
+        }
       }
     }
   } catch (err) {
