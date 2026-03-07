@@ -3850,7 +3850,6 @@ setInterval(async () => {
     }
   } catch (e) { console.warn('review reminder worker error', e); }
 }, 60 * 1000); // runs every minute
-const findSubjectChannel = /^(igcse\/gcse|as\/al|as\/a\\s+level|a-level|igcse\/o-level|below\\s+igcse|university|language)\\s+/i;
 
 client.login(BOT_TOKEN).catch(err => {
   console.error('login failed', err);
