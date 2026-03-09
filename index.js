@@ -1138,7 +1138,7 @@ client.on('interactionCreate', async (interaction) => {
         const channelData = { name: `ticket-${code}`, type: 0, permissionOverwrites: overwrites };
         if (TICKET_CATEGORY_ID) channelData.parent = TICKET_CATEGORY_ID;
         const ticketChannel = await guild.channels.create(channelData).catch(err => { console.error('create channel failed', err); try { notifyStaffError(err, 'ad_enquire create channel', interaction); } catch {} return null; });
-        if (!ticketChannel) return interaction.editReply({ content: `Failed to create ticket channel.`, ephemeral: true }).catch(() => {}).catch(() => {});
+        if (!ticketChannel) return interaction.editReply({ content: `Failed to create ticket channel.`, ephemeral: true }).catch(() => {});
 
         const initMsg = db.initMessage.replace('{subject}', subject);
         await ticketChannel.send({ content: `<@${user.id}>\n${initMsg}` }).catch(() => {});
@@ -1218,7 +1218,7 @@ client.on('interactionCreate', async (interaction) => {
             .slice(0, 25)
             .map(s => new StringSelectMenuOptionBuilder().setLabel(clampLabel(s, 100)).setValue(s.substring(0, 100)).setDescription(clampLabel(`Select ${s}`, 50)));
           if (subjectOptions.length === 0) {
-            return interaction.reply({ content: 'No subjects available for this level. Add subjects first with `/subject add`.', ephemeral: true }).catch(() => {}).catch(() => {});
+            return interaction.reply({ content: 'No subjects available for this level. Add subjects first with `/subject add`.', ephemeral: true }).catch(() => {});
           }
           const subjectSelect = new StringSelectMenuBuilder().setCustomId('ad_subject').setPlaceholder('Select a subject').addOptions(subjectOptions).setRequired(true);
           const subjectLabel = new LabelBuilder().setLabel(clampLabel('Subject')).setStringSelectMenuComponent(subjectSelect);
@@ -2883,7 +2883,7 @@ client.on('interactionCreate', async (interaction) => {
         const channelData = { name: `ticket-${code}`, type: 0, permissionOverwrites: overwrites };
         if (TICKET_CATEGORY_ID) channelData.parent = TICKET_CATEGORY_ID;
         const ticketChannel = await guild.channels.create(channelData).catch(err => { console.error('create channel failed', err); try { notifyStaffError(err, 'enquire create channel', interaction); } catch (e) {} return null; });
-        if (!ticketChannel) return interaction.editReply({ content: `Failed to create ticket channel.`, ephemeral: true }).catch(() => {}).catch(() => {});
+        if (!ticketChannel) return interaction.editReply({ content: `Failed to create ticket channel.`, ephemeral: true }).catch(() => {});
 
         const initMsg = db.initMessage.replace('{subject}', subject);
         await ticketChannel.send({ content: `<@${interaction.user.id}>\n${initMsg}` }).catch(() => {});
