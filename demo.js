@@ -1359,14 +1359,14 @@ export default function initDemo(client) {
         
         const member = interaction.member;
         if (!member) {
-          return interaction.editReply({ content: 'This command can only be used in a server.' });
+          return interaction.editReply({ content: 'This command can only be used in a server.' }).catch(() => {});
         }
         
         // Check if user is staff
         if (!isStaff(member)) {
           return interaction.editReply({ 
             content: 'Only staff can generate authentication codes.' 
-          });
+          }).catch(() => {});
         }
         
         // Generate authentication token
@@ -1402,7 +1402,7 @@ export default function initDemo(client) {
 
       const member = interaction.member;
       if (!member) {
-        return interaction.editReply({ content: 'This command can only be used in a server.' });
+        return interaction.editReply({ content: 'This command can only be used in a server.' }).catch(() => {});
       }
 
       // Check if user is staff or tutor
@@ -1424,7 +1424,7 @@ export default function initDemo(client) {
       if (!isStaffUser && !isTutor) {
         return interaction.editReply({ 
           content: 'Only staff or the tutor assigned to this student can start a demo recording.' 
-        });
+        }).catch(() => {});
       }
 
       // Get tutor ID from assignment if available
@@ -1435,7 +1435,7 @@ export default function initDemo(client) {
 
       const guild = interaction.guild;
       if (!guild) {
-        return interaction.editReply({ content: 'Guild not found.' });
+        return interaction.editReply({ content: 'Guild not found.' }).catch(() => {});
       }
 
       // Create temporary voice channel
@@ -1446,7 +1446,7 @@ export default function initDemo(client) {
       } catch (e) {
         console.error('Failed to create voice channel', e);
         await notifyStaff(e, { module: 'demo.createChannel', userId: member.user.id, client });
-        return interaction.editReply({ content: 'Failed to create voice channel. Staff have been notified.' });
+        return interaction.editReply({ content: 'Failed to create voice channel. Staff have been notified.' }).catch(() => {});
       }
 
       // Generate recording ID and delete key
@@ -1489,7 +1489,7 @@ export default function initDemo(client) {
         try {
           await channel.delete();
         } catch {}
-        return interaction.editReply({ content: 'Failed to join voice channel. Staff have been notified.' });
+        return interaction.editReply({ content: 'Failed to join voice channel. Staff have been notified.' }).catch(() => {});
       }
 
       // Create recording session
