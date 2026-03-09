@@ -1062,7 +1062,7 @@ client.on('interactionCreate', async (interaction) => {
         }
         
         if (!adData || !adData.fullDetails) {
-          return interaction.reply({ content: 'Could not find ad details. Please try again later.', ephemeral: true });
+          return interaction.reply({ content: 'Could not find ad details. Please try again later.', ephemeral: true }).catch(() => {});
         }
 
         const details = adData.fullDetails;
@@ -1109,7 +1109,7 @@ client.on('interactionCreate', async (interaction) => {
           new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
         );
         
-        return interaction.reply({ embeds: [detailsEmbed], components: [detailsRow], ephemeral: true });
+        return interaction.reply({ embeds: [detailsEmbed], components: [detailsRow], ephemeral: true }).catch(() => {});
       }
 
       if (custom.startsWith('ad_enquire|')) {
@@ -1122,7 +1122,7 @@ client.on('interactionCreate', async (interaction) => {
         if (elapsed < cooldownMs) {
           const msLeft = cooldownMs - elapsed;
           const secs = Math.ceil(msLeft / 1000);
-          return interaction.reply({ content: `Please wait ${secs}s before opening another ticket.`, ephemeral: true });
+          return interaction.reply({ content: `Please wait ${secs}s before opening another ticket.`, ephemeral: true }).catch(() => {});
         }
 
         await interaction.reply({ content: `Creating ticket for ${subject}...`, ephemeral: true }).catch(() => {});
@@ -1173,7 +1173,7 @@ client.on('interactionCreate', async (interaction) => {
         const levelKeyFromModmail = parts[5] || null; // For modmail: level is pre-selected
         let levelKey = normalizeCreateAdLevelKey(subjectKey) || (levelKeyFromModmail ? normalizeCreateAdLevelKey(levelKeyFromModmail) : 'other');
         if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
-          return interaction.reply({ content: 'Only the command invoker or staff may open this modal.', ephemeral: true });
+          return interaction.reply({ content: 'Only the command invoker or staff may open this modal.', ephemeral: true }).catch(() => {});
         }
 
         // Build the modal now using cached/db usernames (fast)
@@ -1254,7 +1254,7 @@ client.on('interactionCreate', async (interaction) => {
           
           // Verify the user clicking is the student
           if (interaction.user.id !== studentId) {
-              return interaction.reply({ content: 'Only the student can leave a review for their tutor.', ephemeral: true });
+              return interaction.reply({ content: 'Only the student can leave a review for their tutor.', ephemeral: true }).catch(() => {});
           }
           
           // Create a modal for the review
@@ -1294,8 +1294,8 @@ client.on('interactionCreate', async (interaction) => {
           const [action, reviewId] = custom.split('|');
           const review = db.pendingReviews.find(r => r.id === reviewId);
           
-          if (!review) return interaction.reply({ content: 'Review not found.', ephemeral: true });
-          if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can moderate reviews.', ephemeral: true });
+          if (!review) return interaction.reply({ content: 'Review not found.', ephemeral: true }).catch(() => {});
+          if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can moderate reviews.', ephemeral: true }).catch(() => {});
           
           // Remove from pending
           db.pendingReviews = db.pendingReviews.filter(r => r.id !== reviewId);
@@ -1354,15 +1354,15 @@ client.on('interactionCreate', async (interaction) => {
       if (custom.startsWith('approve|') || custom.startsWith('deny|')) {
         const [act, code] = custom.split('|');
         const ticket = db.tickets[code];
-        if (!ticket) return interaction.reply({ content: 'Ticket not found.', ephemeral: true });
+        if (!ticket) return interaction.reply({ content: 'Ticket not found.', ephemeral: true }).catch(() => {});
         if (!isStaff(interaction.member)) return safeReply(interaction, { content: 'Only staff can do this.', ephemeral: true });
 
         if (act === 'deny') {
           if (ticket.approved) {
-            return interaction.reply({ content: `Ticket ${code} is already approved, you cannot deny it now.`, ephemeral: true });
+            return interaction.reply({ content: `Ticket ${code} is already approved, you cannot deny it now.`, ephemeral: true }).catch(() => {});
           }
           if (interaction.replied || interaction.deferred) {
-            return interaction.followUp({ content: 'Could not open deny modal, try again.', ephemeral: true });
+            return interaction.followUp({ content: 'Could not open deny modal, try again.', ephemeral: true }).catch(() => {});
           }
           const modal = new ModalBuilder().setCustomId(`deny_modal|${code}`).setTitle(`Deny ticket ${code}`);
           const reasonInput = new TextInputBuilder().setCustomId('deny_reason').setLabel('Reason for denial (optional)').setStyle(TextInputStyle.Paragraph).setRequired(false);
@@ -1372,8 +1372,8 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         if (act === 'approve') {
-          if (!db.tickets[code]) return interaction.reply({ content: `Ticket ${code} not found.`, ephemeral: true });
-          if (ticket.approved) return interaction.reply({ content: `Ticket ${code} already approved.`, ephemeral: true });
+          if (!db.tickets[code]) return interaction.reply({ content: `Ticket ${code} not found.`, ephemeral: true }).catch(() => {});
+          if (ticket.approved) return interaction.reply({ content: `Ticket ${code} already approved.`, ephemeral: true }).catch(() => {});
 
           await interaction.reply({ content: `Approving ticket ${code} and notifying tutors...`, ephemeral: true }).catch(() => {});
           const guild = interaction.guild;
@@ -1424,8 +1424,8 @@ client.on('interactionCreate', async (interaction) => {
           const reviewId = custom.split('|')[1];
           const review = db.pendingReviews.find(r => r.id === reviewId);
           
-          if (!review) return interaction.reply({ content: 'Review not found.', ephemeral: true });
-          if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can redact reviews.', ephemeral: true });
+          if (!review) return interaction.reply({ content: 'Review not found.', ephemeral: true }).catch(() => {});
+          if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can redact reviews.', ephemeral: true }).catch(() => {});
           
           const modal = new ModalBuilder()
               .setCustomId(`redact_review_modal|${reviewId}`)
@@ -1474,17 +1474,17 @@ client.on('interactionCreate', async (interaction) => {
         const ticket = db.tickets[code];
         if (!ticket) {
           console.log(`[OPEN CLOSE MODAL] Ticket ${code} not found`);
-          return interaction.reply({ content: 'Ticket not found.', ephemeral: true });
+          return interaction.reply({ content: 'Ticket not found.', ephemeral: true }).catch(() => {});
         }
         if (!isStaff(interaction.member)) {
           console.log(`[OPEN CLOSE MODAL] User ${interaction.user.id} is not staff`);
-          return interaction.reply({ content: 'Only staff can do this.', ephemeral: true });
+          return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
         }
         
         // Check if selections were made
         if (!ticket._closeFlowTemp) {
           console.log(`[OPEN CLOSE MODAL] No temp data found for ticket ${code}`);
-          return interaction.reply({ content: 'Please make selections first before providing a reason.', ephemeral: true });
+          return interaction.reply({ content: 'Please make selections first before providing a reason.', ephemeral: true }).catch(() => {});
         }
         
         console.log(`[OPEN CLOSE MODAL] Temp data for ticket ${code}:`, JSON.stringify(ticket._closeFlowTemp));
@@ -1501,7 +1501,7 @@ client.on('interactionCreate', async (interaction) => {
           }
           
           if (!tutorSubjects.includes(selectedSubject)) {
-            return interaction.reply({ content: `Error: This tutor does not teach ${selectedSubject}. Please select a different tutor or subject.`, ephemeral: true });
+            return interaction.reply({ content: `Error: This tutor does not teach ${selectedSubject}. Please select a different tutor or subject.`, ephemeral: true }).catch(() => {});
           }
         }
         
@@ -1541,8 +1541,8 @@ client.on('interactionCreate', async (interaction) => {
         // same code as original deny flow, but with notifyStaffError on catches
         const code = interaction.customId.split('|')[1];
         const ticket = db.tickets[code];
-        if (!ticket) return interaction.reply({ content: 'Ticket not found.', ephemeral: true });
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can deny tickets.', ephemeral: true });
+        if (!ticket) return interaction.reply({ content: 'Ticket not found.', ephemeral: true }).catch(() => {});
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can deny tickets.', ephemeral: true }).catch(() => {});
 
         if (ticket.approved) {
           try {
@@ -1657,7 +1657,7 @@ client.on('interactionCreate', async (interaction) => {
           
           // Verify the user is the student
           if (interaction.user.id !== studentId) {
-              return interaction.reply({ content: 'Only the student can submit this review.', ephemeral: true });
+              return interaction.reply({ content: 'Only the student can submit this review.', ephemeral: true }).catch(() => {});
           }
           
           const rating = parseInt(interaction.fields.getTextInputValue('review_rating'));
@@ -1665,7 +1665,7 @@ client.on('interactionCreate', async (interaction) => {
           
           // Validate rating
           if (isNaN(rating) || rating < 1 || rating > 5) {
-              return interaction.reply({ content: 'Rating must be a number between 1 and 5.', ephemeral: true });
+              return interaction.reply({ content: 'Rating must be a number between 1 and 5.', ephemeral: true }).catch(() => {});
           }
           
           // Create pending review
@@ -1723,7 +1723,7 @@ client.on('interactionCreate', async (interaction) => {
               console.warn('Failed to notify staff about review', e);
           }
           
-          return interaction.reply({ content: 'Review submitted! It will be reviewed by staff.', ephemeral: true });
+          return interaction.reply({ content: 'Review submitted! It will be reviewed by staff.', ephemeral: true }).catch(() => {});
       }
 
             // redact review modal handler - auto-approve after redaction
@@ -1732,8 +1732,8 @@ client.on('interactionCreate', async (interaction) => {
                   const reviewIndex = db.pendingReviews.findIndex(r => r.id === reviewId);
                   const review = db.pendingReviews[reviewIndex];
                   
-                  if (!review) return interaction.reply({ content: 'Review not found.', ephemeral: true });
-                  if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can redact reviews.', ephemeral: true });
+                  if (!review) return interaction.reply({ content: 'Review not found.', ephemeral: true }).catch(() => {});
+                  if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can redact reviews.', ephemeral: true }).catch(() => {});
                   
                   const redactedText = interaction.fields.getTextInputValue('redacted_text');
                   review.text = redactedText;
@@ -1782,7 +1782,7 @@ client.on('interactionCreate', async (interaction) => {
                       }).catch(() => {});
                   } catch (e) {}
                   
-                  return interaction.reply({ content: 'Review text has been redacted and auto-approved.', ephemeral: true });
+                  return interaction.reply({ content: 'Review text has been redacted and auto-approved.', ephemeral: true }).catch(() => {});
               }
 
       // createad modal submit
@@ -1794,7 +1794,7 @@ client.on('interactionCreate', async (interaction) => {
           const originChannel = parts[4] || null;
           const subjectKeyFromModal = parts[5] || null;
             
-            if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can create ads.', ephemeral: true });
+            if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can create ads.', ephemeral: true }).catch(() => {});
 
             // Defer reply immediately to prevent interaction timeout
             await interaction.deferReply({ ephemeral: true }).catch(() => {});
@@ -1805,7 +1805,7 @@ client.on('interactionCreate', async (interaction) => {
                 const subjectValues = interaction.fields.getStringSelectValues('ad_subject');
                 subject = subjectValues[0];
             } catch (e) {
-                return interaction.editReply({ content: 'Subject selection is required.' });
+                return interaction.editReply({ content: 'Subject selection is required.' }).catch(() => {});
             }
             
             // Get tutor from select menu in modal
@@ -1940,7 +1940,7 @@ client.on('interactionCreate', async (interaction) => {
             );
 
             const findCh = await interaction.guild.channels.fetch(FIND_A_TUTOR_CHANNEL_ID).catch(() => null);
-            if (!findCh) return interaction.editReply({ content: 'Find-a-tutor channel not found.' });
+            if (!findCh) return interaction.editReply({ content: 'Find-a-tutor channel not found.' }).catch(() => {});
 
             const messageContent = roleMention || undefined;
             const sent = await findCh.send({ content: messageContent, embeds: [embed], components: [row] }).catch(err => { 
@@ -2027,7 +2027,7 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             const levelLabel = CREATEAD_LEVEL_LABELS[levelKey] || 'Other';
-            return interaction.editReply({ content: categorySent ? `Ad posted in find-a-tutor and **${levelLabel}**.` : `Ad posted in find-a-tutor. (Could not post in **${levelLabel}** category channel.)` });
+            return interaction.editReply({ content: categorySent ? `Ad posted in find-a-tutor and **${levelLabel}**.` : `Ad posted in find-a-tutor. (Could not post in **${levelLabel}** category channel.)` }).catch(() => {});
         }
 
       // editad modal submit
@@ -2035,7 +2035,7 @@ client.on('interactionCreate', async (interaction) => {
         const parts = interaction.customId.split('|');
         const messageId = parts[1];
         const source = parts[2] || 'find'; // 'find' or 'category'
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit ads.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit ads.', ephemeral: true }).catch(() => {});
         
         // Defer reply immediately to prevent interaction timeout
         await interaction.deferReply({ ephemeral: true }).catch(() => {});
@@ -2048,7 +2048,7 @@ client.on('interactionCreate', async (interaction) => {
             const subjectValues = interaction.fields.getStringSelectValues('edit_ad_subject');
             subject = subjectValues[0];
         } catch (e) {
-            return interaction.editReply({ content: 'Subject selection is required.' });
+            return interaction.editReply({ content: 'Subject selection is required.' }).catch(() => {});
         }
 
         // Find the ad data to get the paired message IDs
@@ -2082,7 +2082,7 @@ client.on('interactionCreate', async (interaction) => {
           categoryChannel = await interaction.guild.channels.fetch(adData.categoryChannelId).catch(() => null);
         }
         
-        if (!findChannel && !categoryChannel) return interaction.editReply({ content: 'Could not find channels to update.' });
+        if (!findChannel && !categoryChannel) return interaction.editReply({ content: 'Could not find channels to update.' }).catch(() => {});
 
         // Get optional color
         let colorVal = null;
@@ -2163,18 +2163,18 @@ client.on('interactionCreate', async (interaction) => {
           resultMsg = 'Failed to update ad in any channel.';
         }
         
-        return interaction.editReply({ content: resultMsg });
+        return interaction.editReply({ content: resultMsg }).catch(() => {});
       }
 
       // sticky modal submit
       if (interaction.customId === 'sticky_modal') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can set sticky.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can set sticky.', ephemeral: true }).catch(() => {});
         const title = interaction.fields.getTextInputValue('sticky_title') || '';
         const body = interaction.fields.getTextInputValue('sticky_body') || '';
         const color = db.defaultEmbedColor || null;
 
         const findChannel = await interaction.guild.channels.fetch(FIND_A_TUTOR_CHANNEL_ID).catch(() => null);
-        if (!findChannel) return interaction.reply({ content: 'Find channel not found', ephemeral: true });
+        if (!findChannel) return interaction.reply({ content: 'Find channel not found', ephemeral: true }).catch(() => {});
 
         // remove previous sticky if exists and post new one via helper
         db.sticky = { title, body, color, messageId: db.sticky?.messageId || null };
@@ -2185,21 +2185,21 @@ client.on('interactionCreate', async (interaction) => {
           console.warn('post sticky failed', e);
           try { notifyStaffError(e, 'sticky_modal repost', interaction); } catch (err) {}
         }
-        return interaction.reply({ content: 'Sticky updated.', ephemeral: true });
+        return interaction.reply({ content: 'Sticky updated.', ephemeral: true }).catch(() => {});
       }
 
       // editinit modal submit
       if (interaction.customId === 'editinit_modal') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit init message.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit init message.', ephemeral: true }).catch(() => {});
         const newInit = interaction.fields.getTextInputValue('init_message') || '';
         db.initMessage = newInit;
         saveDB();
-        return interaction.reply({ content: 'Initial ticket message updated.', ephemeral: true });
+        return interaction.reply({ content: 'Initial ticket message updated.', ephemeral: true }).catch(() => {});
       }
 
       // tutor_notes_modal|USERID -> staff editing notes for a tutor
       if (interaction.customId && interaction.customId.startsWith('tutor_notes_modal|')) {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit tutor notes.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit tutor notes.', ephemeral: true }).catch(() => {});
         const userid = interaction.customId.split('|')[1];
         const notes = interaction.fields.getTextInputValue('tutor_notes') || '';
         
@@ -2207,7 +2207,7 @@ client.on('interactionCreate', async (interaction) => {
         db.tutorProfiles[userid].notes = notes;
         saveDB();
         
-        return interaction.reply({ content: `Notes updated for tutor ${userid}.`, ephemeral: true });
+        return interaction.reply({ content: `Notes updated for tutor ${userid}.`, ephemeral: true }).catch(() => {});
       }
 
       // close_ticket_modal|CODE -> staff provided reason, plus fields were stored temporarily on ticket._closeFlowTemp
@@ -2450,17 +2450,17 @@ client.on('interactionCreate', async (interaction) => {
       // CreateAd level/category select (before opening the modal)
       // customId: createad_level|<requesterUserId>
       if (interaction.customId && interaction.customId.startsWith('createad_level|')) {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
         const parts = interaction.customId.split('|');
         const requester = parts[1];
         if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
-          return interaction.reply({ content: 'Only the command invoker or staff may set the category.', ephemeral: true });
+          return interaction.reply({ content: 'Only the command invoker or staff may set the category.', ephemeral: true }).catch(() => {});
         }
 
         const chosenRaw = interaction.values && interaction.values[0];
         const levelKey = normalizeCreateAdLevelKey(chosenRaw);
         if (!levelKey) {
-          return interaction.reply({ content: 'Invalid category selected.', ephemeral: true });
+          return interaction.reply({ content: 'Invalid category selected.', ephemeral: true }).catch(() => {});
         }
 
         const levelLabel = CREATEAD_LEVEL_LABELS[levelKey] || 'Selected';
@@ -2507,7 +2507,7 @@ client.on('interactionCreate', async (interaction) => {
 
       // Tutor select handler for username-based flows (info / notes / remove)
       if (interaction.customId && interaction.customId.startsWith('tutor_select|')) {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
         const parts = interaction.customId.split('|');
         // customId formats:
         // tutor_select|info
@@ -2515,7 +2515,7 @@ client.on('interactionCreate', async (interaction) => {
         // tutor_select|remove|<subject>
         const subAction = parts[1];
         const selected = interaction.values && interaction.values[0];
-        if (!selected) return interaction.reply({ content: 'No tutor selected.', ephemeral: true });
+        if (!selected) return interaction.reply({ content: 'No tutor selected.', ephemeral: true }).catch(() => {});
 
         if (subAction === 'info') {
           const userid = String(selected);
@@ -2583,7 +2583,7 @@ client.on('interactionCreate', async (interaction) => {
 
         if (subAction === 'remove') {
           const subj = parts[2];
-          if (!subj) return interaction.reply({ content: 'Subject not specified for removal.', ephemeral: true });
+          if (!subj) return interaction.reply({ content: 'Subject not specified for removal.', ephemeral: true }).catch(() => {});
           const userid = String(selected);
           db.subjectTutors[subj] = (db.subjectTutors[subj] || []).filter(id => id !== userid);
           saveDB();
@@ -2601,7 +2601,7 @@ client.on('interactionCreate', async (interaction) => {
 
       // Handler for /tutor add select flow: subject and tutor selection
       if (interaction.customId && interaction.customId.startsWith('tutor_add_select|')) {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
         const parts = interaction.customId.split('|');
         const which = parts[1];
         db._tempTutorAdd = db._tempTutorAdd || {};
@@ -2610,7 +2610,7 @@ client.on('interactionCreate', async (interaction) => {
 
         if (which === 'subject') {
           const selected = interaction.values && interaction.values[0];
-          if (!selected) return interaction.reply({ content: 'No subject selected.', ephemeral: true });
+          if (!selected) return interaction.reply({ content: 'No subject selected.', ephemeral: true }).catch(() => {});
           db._tempTutorAdd[key].subject = selected;
           saveDB();
           // If userid already chosen, finalize
@@ -2654,7 +2654,7 @@ client.on('interactionCreate', async (interaction) => {
 
         if (which === 'tutor') {
           const selected = interaction.values && interaction.values[0];
-          if (!selected) return interaction.reply({ content: 'No tutor selected.', ephemeral: true });
+          if (!selected) return interaction.reply({ content: 'No tutor selected.', ephemeral: true }).catch(() => {});
           db._tempTutorAdd[key].userid = String(selected);
           saveDB();
           if (db._tempTutorAdd[key].subject) {
@@ -2697,7 +2697,7 @@ client.on('interactionCreate', async (interaction) => {
       }
       // Handler for /tutor remove select flow: subject and tutor selection
       if (interaction.customId && interaction.customId.startsWith('tutor_remove_select|')) {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
         const parts = interaction.customId.split('|');
         const which = parts[1];
         db._tempTutorRemove = db._tempTutorRemove || {};
@@ -2706,7 +2706,7 @@ client.on('interactionCreate', async (interaction) => {
 
         if (which === 'subject') {
           const selected = interaction.values && interaction.values[0];
-          if (!selected) return interaction.reply({ content: 'No subject selected.', ephemeral: true });
+          if (!selected) return interaction.reply({ content: 'No subject selected.', ephemeral: true }).catch(() => {});
           db._tempTutorRemove[key].subject = selected;
           saveDB();
           if (db._tempTutorRemove[key].userid) {
@@ -2727,7 +2727,7 @@ client.on('interactionCreate', async (interaction) => {
 
         if (which === 'tutor') {
           const selected = interaction.values && interaction.values[0];
-          if (!selected) return interaction.reply({ content: 'No tutor selected.', ephemeral: true });
+          if (!selected) return interaction.reply({ content: 'No tutor selected.', ephemeral: true }).catch(() => {});
           db._tempTutorRemove[key].userid = String(selected);
           saveDB();
           if (db._tempTutorRemove[key].subject) {
@@ -2779,13 +2779,13 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       if (interaction.customId && interaction.customId.startsWith('close_ticket_select|')) {
-  if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true });
+  if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
 
   const cmdParts = interaction.customId.split('|');
   const code = cmdParts[1];
   const which = cmdParts[2];
   const ticket = db.tickets[code];
-  if (!ticket) return interaction.reply({ content: 'Ticket not found.', ephemeral: true });
+  if (!ticket) return interaction.reply({ content: 'Ticket not found.', ephemeral: true }).catch(() => {});
 
   ticket._closeFlowTemp = ticket._closeFlowTemp || {};
   console.log(`[CLOSE SELECT] Ticket ${code}, which: ${which}, value: ${interaction.values[0]}`);
@@ -2865,7 +2865,7 @@ client.on('interactionCreate', async (interaction) => {
         if (elapsed < cooldownMs) {
           const msLeft = cooldownMs - elapsed;
           const secs = Math.ceil(msLeft / 1000);
-          return interaction.reply({ content: `Please wait ${secs}s before creating another enquiry.`, ephemeral: true });
+          return interaction.reply({ content: `Please wait ${secs}s before creating another enquiry.`, ephemeral: true }).catch(() => {});
         }
 
         await interaction.reply({ content: 'Creating your ticket...', ephemeral: true }).catch(() => {});
@@ -2915,7 +2915,7 @@ client.on('interactionCreate', async (interaction) => {
         const messageText = interaction.options.getString('message', true);
 
         const ticket = db.tickets[code];
-        if (!ticket) return interaction.reply({ content: `Ticket ${code} not found.`, ephemeral: true });
+        if (!ticket) return interaction.reply({ content: `Ticket ${code} not found.`, ephemeral: true }).catch(() => {});
 
         const is_staff = isStaff(interaction.member);
         const allowedTutorsArr = db.subjectTutors[ticket.subject] || [];
@@ -2924,10 +2924,10 @@ client.on('interactionCreate', async (interaction) => {
         const isTutorId = allowedTutors.has(userIdStr);
 
         if (!is_staff) {
-          if (!ticket.approved) return interaction.reply({ content: 'This enquiry has not been approved yet, only staff can reply before approval.', ephemeral: true });
+          if (!ticket.approved) return interaction.reply({ content: 'This enquiry has not been approved yet, only staff can reply before approval.', ephemeral: true }).catch(() => {});
           if (!isTutorId) {
             console.warn(`Unauthorized reply attempt: user=${userIdStr}, subject=${ticket.subject}, ticket=${code}`);
-            return interaction.reply({ content: 'Only tutors assigned to this subject or staff can reply.', ephemeral: true });
+            return interaction.reply({ content: 'Only tutors assigned to this subject or staff can reply.', ephemeral: true }).catch(() => {});
           }
         }
 
@@ -2941,7 +2941,7 @@ client.on('interactionCreate', async (interaction) => {
 
         const guild = interaction.guild;
         const ticketChannel = await guild.channels.fetch(ticket.ticketChannelId).catch(() => null);
-        if (!ticketChannel) return interaction.reply({ content: 'Ticket channel not found.', ephemeral: true });
+        if (!ticketChannel) return interaction.reply({ content: 'Ticket channel not found.', ephemeral: true }).catch(() => {});
 
         try { await ticketChannel.send(`Reply from ${tutorLabel}: ${messageText}`).catch(() => {}); } catch (e) { console.warn('Failed send anon reply', e); try { notifyStaffError(e, 'reply send anon', interaction); } catch (err) {} }
 
@@ -2958,7 +2958,7 @@ client.on('interactionCreate', async (interaction) => {
           }
         } catch (e) { console.warn('Failed to post in tutors thread', e); try { notifyStaffError(e, 'reply post to thread', interaction); } catch (err) {} }
 
-        return interaction.reply({ content: `Reply sent to ticket ${code}.`, ephemeral: true });
+        return interaction.reply({ content: `Reply sent to ticket ${code}.`, ephemeral: true }).catch(() => {});
       }
 
 // CLOSE command changed: send an ephemeral message with select menus and a button to open modal for reason
@@ -2972,7 +2972,7 @@ if (cmd === 'close') {
     const ticketNum = modmailMatch[1];
     const letter = modmailMatch[2].toUpperCase();
     
-    if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can close tickets.', ephemeral: true });
+    if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can close tickets.', ephemeral: true }).catch(() => {});
     
     // Find the modmail ticket with matching ticketNum and letter
     let foundTicket = null;
@@ -2984,7 +2984,7 @@ if (cmd === 'close') {
     }
     
     if (!foundTicket) {
-      return interaction.reply({ content: `Modmail ticket ${ticketNum}${letter} not found.`, ephemeral: true });
+      return interaction.reply({ content: `Modmail ticket ${ticketNum}${letter} not found.`, ephemeral: true }).catch(() => {});
     }
     
     // If this is a tutor_application ticket, start the acceptance flow
@@ -3000,18 +3000,18 @@ if (cmd === 'close') {
     try {
       foundTicket.closeReason = 'Staff closed via /close command';
       await db._modmail_helpers.closeTicketByChannel(foundTicket.channelId, `${interaction.user.tag} (staff)`);
-      return interaction.reply({ content: `Modmail ticket ${ticketNum}${letter} closed.`, ephemeral: true });
+      return interaction.reply({ content: `Modmail ticket ${ticketNum}${letter} closed.`, ephemeral: true }).catch(() => {});
     } catch (e) {
       console.warn('Failed to close modmail ticket', e);
       try { notifyStaffError(e, 'modmail close', interaction); } catch (err) {}
-      return interaction.reply({ content: `Failed to close modmail ticket ${ticketNum}${letter}.`, ephemeral: true });
+      return interaction.reply({ content: `Failed to close modmail ticket ${ticketNum}${letter}.`, ephemeral: true }).catch(() => {});
     }
   }
   
   // Regular ticket close flow
   const ticket = db.tickets[code];
-  if (!ticket) return interaction.reply({ content: `Ticket ${code} not found.`, ephemeral: true });
-  if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can close tickets.', ephemeral: true });
+  if (!ticket) return interaction.reply({ content: `Ticket ${code} not found.`, ephemeral: true }).catch(() => {});
+  if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can close tickets.', ephemeral: true }).catch(() => {});
 
   // Build select for hired yes/no
   const hiredSelect = new StringSelectMenuBuilder()
@@ -3084,18 +3084,18 @@ if (cmd === 'close') {
   // Button to open the modal for reason, modal id will be close_ticket_modal|CODE
   const buttonRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`open_close_modal|${code}`).setLabel('Provide reason and close').setStyle(ButtonStyle.Danger));
 
-  return interaction.reply({ content: 'Please pick whether the student was hired, the tutor if yes, and the subject. Then click Provide reason and close.', components: [...rows, buttonRow], ephemeral: true });
+  return interaction.reply({ content: 'Please pick whether the student was hired, the tutor if yes, and the subject. Then click Provide reason and close.', components: [...rows, buttonRow], ephemeral: true }).catch(() => {});
 }
 
       // subject / tutor / createad / editad / sticky / embedcolor / editinit / help / staffhelp
       if (cmd === 'subject') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can manage subjects.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can manage subjects.', ephemeral: true }).catch(() => {});
         const action = interaction.options.getString('action', true);
         const subj = interaction.options.getString('subject', false);
         const levelRaw = interaction.options.getString('level', false);
         if (action === 'add') {
-          if (!subj) return interaction.reply({ content: 'Provide subject text to add.', ephemeral: true });
-          if (db.subjects.includes(subj)) return interaction.reply({ content: 'Subject already exists.', ephemeral: true });
+          if (!subj) return interaction.reply({ content: 'Provide subject text to add.', ephemeral: true }).catch(() => {});
+          if (db.subjects.includes(subj)) return interaction.reply({ content: 'Subject already exists.', ephemeral: true }).catch(() => {});
           db.subjects.push(subj);
           if (levelRaw) {
             const levelKey = normalizeCreateAdLevelKey(levelRaw) || detectLevelFromSubject(subj);
@@ -3106,21 +3106,21 @@ if (cmd === 'close') {
           }
           saveDB(); await registerCommands();
           const levelKey = (db.subjectLevels && db.subjectLevels[subj]) || detectLevelFromSubject(subj);
-          return interaction.reply({ content: `Subject added: ${subj}${levelKey ? ` (level: ${levelKey})` : ' (no level set — use the level option to filter by level)'}`, ephemeral: true });
+          return interaction.reply({ content: `Subject added: ${subj}${levelKey ? ` (level: ${levelKey})` : ' (no level set — use the level option to filter by level)'}`, ephemeral: true }).catch(() => {});
         } else if (action === 'remove') {
-          if (!subj) return interaction.reply({ content: 'Provide subject text to remove.', ephemeral: true });
+          if (!subj) return interaction.reply({ content: 'Provide subject text to remove.', ephemeral: true }).catch(() => {});
           db.subjects = db.subjects.filter(s => s !== subj);
           delete db.subjectTutors[subj];
           if (db.subjectLevels) delete db.subjectLevels[subj];
           saveDB(); await registerCommands();
-          return interaction.reply({ content: `Subject removed: ${subj}`, ephemeral: true });
+          return interaction.reply({ content: `Subject removed: ${subj}`, ephemeral: true }).catch(() => {});
         } else {
-          if (!db.subjects || db.subjects.length === 0) return interaction.reply({ content: 'No subjects found.', ephemeral: true });
+          if (!db.subjects || db.subjects.length === 0) return interaction.reply({ content: 'No subjects found.', ephemeral: true }).catch(() => {});
           const lines = db.subjects.map(s => {
             const lvl = (db.subjectLevels && db.subjectLevels[s]) || detectLevelFromSubject(s) || '(no level)';
             return `${s} [${lvl}]`;
           });
-          return interaction.reply({ content: `Subjects (${lines.length}):\n${lines.join('\n')}`, ephemeral: true });
+          return interaction.reply({ content: `Subjects (${lines.length}):\n${lines.join('\n')}`, ephemeral: true }).catch(() => {});
         }
       }
 
@@ -3136,7 +3136,7 @@ if (cmd === 'close') {
           if (!useridRaw) {
             // present a select of known tutors so staff don't need to type IDs
             const allTutorIds = Array.from(new Set(Object.values(db.subjectTutors).flat()));
-            if (allTutorIds.length === 0) return interaction.reply({ content: 'No tutors in database.', ephemeral: true });
+            if (allTutorIds.length === 0) return interaction.reply({ content: 'No tutors in database.', ephemeral: true }).catch(() => {});
             const options = [];
             for (const tid of allTutorIds.slice(0, 24)) {
               let label = `User ID: ${tid}`;
@@ -3152,13 +3152,13 @@ if (cmd === 'close') {
               options.push({ label: label.substring(0,100), value: String(tid).substring(0,100), description: desc.substring(0,50) });
             }
             const select = new StringSelectMenuBuilder().setCustomId('tutor_select|info').setPlaceholder('Select a tutor to view info').addOptions(options);
-            return interaction.reply({ content: 'Select a tutor to view info:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
+            return interaction.reply({ content: 'Select a tutor to view info:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
           }
           // Resolve ad code to tutor ID if an ad code was provided
           let userid = String(useridRaw);
           if (isAdCode(userid)) {
             const resolved = resolveAdCodeToTutorId(userid);
-            if (!resolved) return interaction.reply({ content: `No ad found with code **${userid}**. Please check the code and try again.`, ephemeral: true });
+            if (!resolved) return interaction.reply({ content: `No ad found with code **${userid}**. Please check the code and try again.`, ephemeral: true }).catch(() => {});
             userid = resolved;
           }
           const subjects = [];
@@ -3195,15 +3195,15 @@ if (cmd === 'close') {
             `Rating: ${rating}`,
             `Notes: ${notes}`
           ];
-          return interaction.reply({ content: lines.join('\n'), ephemeral: true });
+          return interaction.reply({ content: lines.join('\n'), ephemeral: true }).catch(() => {});
         }
 
         if (action === 'notes') {
-          if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can manage tutor notes.', ephemeral: true });
+          if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can manage tutor notes.', ephemeral: true }).catch(() => {});
           if (!useridRaw) {
             // present a select of tutors to open notes modal for
             const allTutorIds = Array.from(new Set(Object.values(db.subjectTutors).flat()));
-            if (allTutorIds.length === 0) return interaction.reply({ content: 'No tutors in database.', ephemeral: true });
+            if (allTutorIds.length === 0) return interaction.reply({ content: 'No tutors in database.', ephemeral: true }).catch(() => {});
             const options = [];
             for (const tid of allTutorIds.slice(0, 24)) {
               let label = `User ID: ${tid}`;
@@ -3216,7 +3216,7 @@ if (cmd === 'close') {
               options.push({ label: label.substring(0,100), value: String(tid).substring(0,100), description: desc.substring(0,50) });
             }
             const select = new StringSelectMenuBuilder().setCustomId('tutor_select|notes').setPlaceholder('Select a tutor to edit notes').addOptions(options);
-            return interaction.reply({ content: 'Select a tutor to edit notes:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
+            return interaction.reply({ content: 'Select a tutor to edit notes:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
           }
 
           const userid = String(useridRaw);
@@ -3244,7 +3244,7 @@ if (cmd === 'close') {
           } catch (err) {
             console.error('showModal failed for tutor notes', err);
             try { notifyStaffError(err, 'tutor notes showModal', interaction); } catch (e) {}
-            return interaction.reply({ content: 'Could not open notes modal, try again.', ephemeral: true });
+            return interaction.reply({ content: 'Could not open notes modal, try again.', ephemeral: true }).catch(() => {});
           }
           return;
         }
@@ -3252,7 +3252,7 @@ if (cmd === 'close') {
         if (action === 'list') {
           if (subj) {
             const arr = db.subjectTutors[subj] || [];
-            if (arr.length === 0) return interaction.reply({ content: `Tutors for ${subj}:\n(none)`, ephemeral: true });
+            if (arr.length === 0) return interaction.reply({ content: `Tutors for ${subj}:\n(none)`, ephemeral: true }).catch(() => {});
             const lines = [];
             for (const id of arr) {
               let label = id;
@@ -3263,7 +3263,7 @@ if (cmd === 'close') {
               } catch (e) {}
               lines.push(label);
             }
-            return interaction.reply({ content: `Tutors for ${subj}:\n${lines.join('\n')}`, ephemeral: true });
+            return interaction.reply({ content: `Tutors for ${subj}:\n${lines.join('\n')}`, ephemeral: true }).catch(() => {});
           } else {
             const lines = [];
             for (const s of db.subjects) {
@@ -3283,7 +3283,7 @@ if (cmd === 'close') {
                 lines.push(`${s}: ${formatted.join(', ')}`);
               }
             }
-            return interaction.reply({ content: lines.join('\n'), ephemeral: true });
+            return interaction.reply({ content: lines.join('\n'), ephemeral: true }).catch(() => {});
           }
         }
 
@@ -3315,13 +3315,13 @@ if (cmd === 'close') {
               rows.push(new ActionRowBuilder().addComponents(tutorSelect));
             }
 
-            if (!rows.length) return interaction.reply({ content: 'No subjects or tutors available to remove.', ephemeral: true });
-            return interaction.reply({ content: 'Select subject and tutor to remove:', components: rows, ephemeral: true });
+            if (!rows.length) return interaction.reply({ content: 'No subjects or tutors available to remove.', ephemeral: true }).catch(() => {});
+            return interaction.reply({ content: 'Select subject and tutor to remove:', components: rows, ephemeral: true }).catch(() => {});
           }
 
           // If subject provided, show tutors for that subject only
           const arr = db.subjectTutors[subj] || [];
-          if (!arr.length) return interaction.reply({ content: `No tutors for subject ${subj}.`, ephemeral: true });
+          if (!arr.length) return interaction.reply({ content: `No tutors for subject ${subj}.`, ephemeral: true }).catch(() => {});
           const options = [];
           for (const tid of arr.slice(0,24)) {
             let label = `User ID: ${tid}`;
@@ -3330,11 +3330,11 @@ if (cmd === 'close') {
             options.push({ label: label.substring(0,100), value: String(tid).substring(0,100), description: desc.substring(0,50) });
           }
           const select = new StringSelectMenuBuilder().setCustomId(`tutor_remove_select|tutor|${subj}`).setPlaceholder('Select tutor to remove from subject').addOptions(options);
-          return interaction.reply({ content: `Select a tutor to remove from ${subj}:`, components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
+          return interaction.reply({ content: `Select a tutor to remove from ${subj}:`, components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
         }
 
         if (!isStaff(interaction.member)) {
-          return interaction.reply({ content: 'Only staff can manage tutors.', ephemeral: true });
+          return interaction.reply({ content: 'Only staff can manage tutors.', ephemeral: true }).catch(() => {});
         }
 
         // If add/remove called without both userid and subject, present selection UI
@@ -3352,7 +3352,7 @@ if (cmd === 'close') {
           // Subject select if subject not provided
           if (!subj) {
             const subjOptions = (db.subjects || []).slice(0, 25).map(s => ({ label: s.substring(0,100), value: s.substring(0,100), description: `Subject: ${s}`.substring(0,50) }));
-            if (subjOptions.length === 0) return interaction.reply({ content: 'No subjects available. Please add subjects first using /subject add', ephemeral: true });
+            if (subjOptions.length === 0) return interaction.reply({ content: 'No subjects available. Please add subjects first using /subject add', ephemeral: true }).catch(() => {});
             const subjectCustomId = action === 'remove' ? 'tutor_remove_select|subject' : 'tutor_add_select|subject';
             const subjectSelect = new StringSelectMenuBuilder().setCustomId(subjectCustomId).setPlaceholder(action === 'remove' ? 'Select subject to remove tutor from' : 'Select subject to add tutor to').addOptions(subjOptions);
             rows.push(new ActionRowBuilder().addComponents(subjectSelect));
@@ -3400,8 +3400,8 @@ if (cmd === 'close') {
             }
           }
 
-          if (!rows.length) return interaction.reply({ content: 'Nothing to select. Provide both userid and subject.', ephemeral: true });
-          return interaction.reply({ content: 'Select subject and/or tutor to add (your selections will be saved).', components: rows, ephemeral: true });
+          if (!rows.length) return interaction.reply({ content: 'Nothing to select. Provide both userid and subject.', ephemeral: true }).catch(() => {});
+          return interaction.reply({ content: 'Select subject and/or tutor to add (your selections will be saved).', components: rows, ephemeral: true }).catch(() => {});
         }
 
         const userid = String(useridRaw);
@@ -3409,7 +3409,7 @@ if (cmd === 'close') {
 
         if (action === 'add') {
           if (db.subjectTutors[subj].includes(userid)) {
-            return interaction.reply({ content: 'User already added for this subject.', ephemeral: true });
+            return interaction.reply({ content: 'User already added for this subject.', ephemeral: true }).catch(() => {});
           }
 
           db.subjectTutors[subj].push(userid);
@@ -3442,15 +3442,15 @@ if (cmd === 'close') {
           } catch (e) { console.warn('revokeTutorAccess failed', e); try { notifyStaffError(e, 'revokeTutorAccess', interaction); } catch (err) {} }
           const tutorUser = await client.users.fetch(userid).catch(() => null);
           const tutorDisplay = tutorUser ? `${tutorUser.username} (${userid})` : userid;
-          return interaction.reply({ content: `Removed tutor ${tutorDisplay} from ${subj}, access revoked.`, ephemeral: true });
+          return interaction.reply({ content: `Removed tutor ${tutorDisplay} from ${subj}, access revoked.`, ephemeral: true }).catch(() => {});
         }
 
-        return interaction.reply({ content: 'Unknown action for tutor.', ephemeral: true });
+        return interaction.reply({ content: 'Unknown action for tutor.', ephemeral: true }).catch(() => {});
       }
 
 // Replace the current /createad command handler (around line 920-950) with:
 if (cmd === 'createad') {
-    if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can create ads.', ephemeral: true });
+    if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can create ads.', ephemeral: true }).catch(() => {});
 
     // Acknowledge and fetch usernames into DB (may take time). We reply first to avoid "application did not respond".
     try {
@@ -3517,7 +3517,7 @@ if (cmd === 'createad') {
 
       // editad command prefill modal
       if (cmd === 'editad') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit ads.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit ads.', ephemeral: true }).catch(() => {});
         const messageId = interaction.options.getString('messageid', true);
         
         // First, check if this is a category channel message ID
@@ -3560,7 +3560,7 @@ if (cmd === 'createad') {
           }
         }
         
-        if (!msg) return interaction.reply({ content: `Message ${messageId} not found in find-a-tutor or any category channel.`, ephemeral: true });
+        if (!msg) return interaction.reply({ content: `Message ${messageId} not found in find-a-tutor or any category channel.`, ephemeral: true }).catch(() => {});
 
         const embed = msg.embeds && msg.embeds.length ? msg.embeds[0] : null;
         const preTitle = embed?.title || '';
@@ -3589,7 +3589,7 @@ if (cmd === 'createad') {
         });
         
         if (subjectOptions.length === 0) {
-            return interaction.reply({ content: 'No subjects available. Please add subjects first using /subject add', ephemeral: true });
+            return interaction.reply({ content: 'No subjects available. Please add subjects first using /subject add', ephemeral: true }).catch(() => {});
         }
         
         const subjectSelect = new StringSelectMenuBuilder()
@@ -3632,17 +3632,17 @@ if (cmd === 'createad') {
 
       // sticky command shows modal (prefill)
       if (cmd === 'sticky') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can set sticky message.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can set sticky message.', ephemeral: true }).catch(() => {});
         const modal = new ModalBuilder().setCustomId('sticky_modal').setTitle('Set sticky message');
         const titleInput = new TextInputBuilder().setCustomId('sticky_title').setLabel('Sticky title').setStyle(TextInputStyle.Short).setRequired(false).setValue((db.sticky?.title || '').substring(0, 100));
         const bodyInput = new TextInputBuilder().setCustomId('sticky_body').setLabel('Sticky body').setStyle(TextInputStyle.Paragraph).setRequired(true).setValue((db.sticky?.body || '').substring(0, 4000));
         modal.addComponents(new ActionRowBuilder().addComponents(titleInput), new ActionRowBuilder().addComponents(bodyInput));
-        return interaction.showModal(modal);
+        return interaction.showModal(modal).catch(() => {});
       }
 
       // embedcolor
       if (cmd === 'embedcolor') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can set embed color.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can set embed color.', ephemeral: true }).catch(() => {});
         const hex = interaction.options.getString('hex', true);
 
         db.defaultEmbedColor = hex;
@@ -3662,12 +3662,12 @@ if (cmd === 'createad') {
           }
         }
 
-        return interaction.reply({ content: `Default embed color set to ${hex}`, ephemeral: true });
+        return interaction.reply({ content: `Default embed color set to ${hex}`, ephemeral: true }).catch(() => {});
       }
 
       // editinit command now opens modal with prefilled value
       if (cmd === 'editinit') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit init message.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit init message.', ephemeral: true }).catch(() => {});
         const modal = new ModalBuilder().setCustomId('editinit_modal').setTitle('Edit initial ticket message');
         const initInput = new TextInputBuilder()
           .setCustomId('init_message')
@@ -3676,20 +3676,20 @@ if (cmd === 'createad') {
           .setRequired(true)
           .setValue((db.initMessage || '').substring(0, 4000));
         modal.addComponents(new ActionRowBuilder().addComponents(initInput));
-        return interaction.showModal(modal);
+        return interaction.showModal(modal).catch(() => {});
       }
 
-      if (cmd === 'help') return interaction.reply({ content: `Commands:\n/enquire subject:<choice>\n/reply code message\n/help\n/bumpleaderboard`, ephemeral: true });
+      if (cmd === 'help') return interaction.reply({ content: `Commands:\n/enquire subject:<choice>\n/reply code message\n/help\n/bumpleaderboard`, ephemeral: true }).catch(() => {});
 
       if (cmd === 'staffhelp') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can access this.', ephemeral: true });
-        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list\n/tutor add/remove/list/info\n/createad\n/editad\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove\n/reviewreminder\n/migrateads [force:true]`, ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can access this.', ephemeral: true }).catch(() => {});
+        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list\n/tutor add/remove/list/info\n/createad\n/editad\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove\n/reviewreminder\n/migrateads [force:true]`, ephemeral: true }).catch(() => {});
       }
 
       // bumpleaderboard command
       if (cmd === 'bumpleaderboard') {
         if (!db.bumpLeaderboard || Object.keys(db.bumpLeaderboard).length === 0) {
-          return interaction.reply({ content: 'No bumps tracked yet! Use `/bump` to bump the server and start tracking.', ephemeral: false });
+          return interaction.reply({ content: 'No bumps tracked yet! Use `/bump` to bump the server and start tracking.', ephemeral: false }).catch(() => {});
         }
 
         // Sort users by bump count (descending)
@@ -3699,7 +3699,7 @@ if (cmd === 'createad') {
           .slice(0, 10); // Top 10
 
         if (sorted.length === 0) {
-          return interaction.reply({ content: 'No bumps tracked yet! Use `/bump` to bump the server and start tracking.', ephemeral: false });
+          return interaction.reply({ content: 'No bumps tracked yet! Use `/bump` to bump the server and start tracking.', ephemeral: false }).catch(() => {});
         }
 
         // Build leaderboard embed
@@ -3724,12 +3724,12 @@ if (cmd === 'createad') {
 
         embed.setDescription(leaderboardText || 'No bumps tracked yet!');
 
-        return interaction.reply({ embeds: [embed], ephemeral: false });
+        return interaction.reply({ embeds: [embed], ephemeral: false }).catch(() => {});
       }
 
       // STUDENT command: add/remove
       if (cmd === 'student') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can manage students.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can manage students.', ephemeral: true }).catch(() => {});
         const action = interaction.options.getString('action', true);
         const studentId = interaction.options.getString('studentid', true);
         const tutorId = interaction.options.getString('tutorid', true);
@@ -3742,28 +3742,28 @@ if (cmd === 'createad') {
           if (!db.tutorProfiles[tutorId].students.includes(studentId)) db.tutorProfiles[tutorId].students.push(studentId);
           db.studentAssignments[studentId] = { tutorId, subject, assignedAt: Date.now(), reviewScheduledAt: Date.now() + (db.reviewConfig.delaySeconds || 1296000)*1000 };
           saveDB();
-          return interaction.reply({ content: `Student ${studentId} assigned to tutor ${tutorId} for ${subject}`, ephemeral: true });
+          return interaction.reply({ content: `Student ${studentId} assigned to tutor ${tutorId} for ${subject}`, ephemeral: true }).catch(() => {});
         } else {
           // remove
           if (db.tutorProfiles[tutorId] && db.tutorProfiles[tutorId].students) db.tutorProfiles[tutorId].students = db.tutorProfiles[tutorId].students.filter(s => s !== studentId);
           if (db.studentAssignments[studentId] && db.studentAssignments[studentId].tutorId === tutorId) delete db.studentAssignments[studentId];
           saveDB();
-          return interaction.reply({ content: `Student ${studentId} removed from tutor ${tutorId}`, ephemeral: true });
+          return interaction.reply({ content: `Student ${studentId} removed from tutor ${tutorId}`, ephemeral: true }).catch(() => {});
         }
       }
 
       // reviewreminder - simple setter
             if (cmd === 'reviewreminder') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can change review reminder.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can change review reminder.', ephemeral: true }).catch(() => {});
         const seconds = Number(interaction.options.getString('seconds', true));
-        if (!seconds || seconds <= 0) return interaction.reply({ content: 'Provide a positive number of seconds.', ephemeral: true });
+        if (!seconds || seconds <= 0) return interaction.reply({ content: 'Provide a positive number of seconds.', ephemeral: true }).catch(() => {});
         db.reviewConfig.delaySeconds = Math.max(1, Math.floor(seconds));
         saveDB();
-        return interaction.reply({ content: `Review reminder set to ${db.reviewConfig.delaySeconds} second(s).`, ephemeral: true });
+        return interaction.reply({ content: `Review reminder set to ${db.reviewConfig.delaySeconds} second(s).`, ephemeral: true }).catch(() => {});
       }
 
       if (cmd === 'seedsubjects') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can seed subjects.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can seed subjects.', ephemeral: true }).catch(() => {});
         const dryRun = interaction.options.getBoolean('dryrun') || false;
 
         // Hardcoded seed data derived from the IGCSE Tutors and AS/A Level Tutors channel exports.
@@ -3891,7 +3891,7 @@ if (cmd === 'createad') {
       }
 
       if (cmd === 'migrateads') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can run ad migration.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can run ad migration.', ephemeral: true }).catch(() => {});
         const force = interaction.options.getBoolean('force') || false;
 
         const MIGRATE_MAX_DESCRIPTION_LINES = 4;
@@ -3909,7 +3909,7 @@ if (cmd === 'createad') {
           : allAds.filter(([, data]) => !data.categoryMessageId);
 
         if (toMigrate.length === 0) {
-          return interaction.editReply({ content: force ? 'No ads found in the database.' : 'All ads already have a category message. Use `force:true` to re-post.' });
+          return interaction.editReply({ content: force ? 'No ads found in the database.' : 'All ads already have a category message. Use `force:true` to re-post.' }).catch(() => {});
         }
 
         await interaction.editReply({ content: `Migrating ${toMigrate.length} ad(s)… please wait.` });
@@ -3964,11 +3964,11 @@ if (cmd === 'createad') {
 
         const summary = [`Migration complete!`, `✅ Migrated: ${migrated}`, `⏭️ Skipped: ${skipped}`];
         if (errors.length > 0) summary.push(`❌ Errors: ${errors.length} (check logs)`);
-        return interaction.editReply({ content: summary.join('\n') });
+        return interaction.editReply({ content: summary.join('\n') }).catch(() => {});
       }
 
       if (cmd === 'exportchannels') {
-        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can use this command.', ephemeral: true });
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can use this command.', ephemeral: true }).catch(() => {});
         await interaction.deferReply({ ephemeral: true }).catch(err => console.warn('exportchannels: deferReply failed', err));
 
         const guild = interaction.guild;
@@ -4013,7 +4013,7 @@ if (cmd === 'createad') {
         try {
           const buf = Buffer.from(json, 'utf8');
           const attachment = new AttachmentBuilder(buf, { name: 'channels-export.json' });
-          return interaction.editReply({ files: [attachment] });
+          return interaction.editReply({ files: [attachment] }).catch(() => {});
         } catch (e) {
           console.warn('exportchannels: attachment send failed, falling back to chunked text', e);
           const chunks = [];
