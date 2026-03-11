@@ -88,6 +88,7 @@ const {
   MODMAIL_TRANSCRIPTS_CHANNEL_ID,
   BUMP_CHANNEL_ID, // Optional: Channel ID where bump tracking should listen (if not set, listens in all channels)
   ADS_CHANNEL_ID,
+  ARCHIVED_ADS_CHANNEL_ID,
   SYNC_SECRET,
   SYNC_WEBHOOK_URL
 } = process.env;
@@ -131,6 +132,7 @@ let db = {
   sticky: null, // { title, body, color, messageId }
   createAds: {}, // map messageId -> { channelId, embed, adCode, tutorId, level, ... }
   nextAdCodes: {}, // map levelKey -> next serial number (e.g. { igcse: 3, a_level: 1 })
+  archivedAds: {}, // map originalMessageId -> { embed, tutorId, level, adCode, archivedAt, archivedBy, reason }
   defaultEmbedColor: null,
   // Review system
   tutorProfiles: {}, // tutorId -> { addedAt, students: [userId,...], reviews: [], rating: {count,avg} }
@@ -409,6 +411,35 @@ if (db.reviewConfig && db.reviewConfig.delayDays && !db.reviewConfig.delaySecond
 }
 
 loadDB();
+
+// Helper: build a standardized archive embed for an ad entry
+function buildArchiveEmbed(adData, msgId, reason, archivedBy) {
+  const subject = adData.embed?.title || 'Unknown Subject';
+  const level = CREATEAD_LEVEL_LABELS[adData.level] || adData.level || 'Unknown';
+  const tutorValue = archivedBy === 'system'
+    ? `<@${adData.tutorId}> (left server)`
+    : (adData.tutorId ? `<@${adData.tutorId}>` : '(no tutor assigned)');
+  const embed = new EmbedBuilder()
+    .setTitle(`📦 Archived Ad: ${subject}`)
+    .setDescription(adData.embed?.description || '(no description)')
+    .addFields(
+      { name: 'Ad Code', value: adData.adCode || '(none)', inline: true },
+      { name: 'Level', value: level, inline: true },
+      { name: 'Tutor', value: tutorValue, inline: true },
+      { name: 'Reason', value: reason },
+      { name: 'Original Message ID', value: msgId }
+    )
+    .setTimestamp();
+  if (adData.embed?.color) { try { embed.setColor(adData.embed.color); } catch (e) {} }
+  return embed;
+}
+
+// Helper: get student IDs currently assigned to a given tutor
+function getStudentsAssignedToTutor(tutorId) {
+  return Object.entries(db.studentAssignments || {})
+    .filter(([, asg]) => asg && String(asg.tutorId) === String(tutorId))
+    .map(([studentId]) => studentId);
+}
 
 // Helper function to split long messages into chunks that fit Discord's 2000 character limit
 function splitMessage(content, maxLength = 2000) {
@@ -924,7 +955,16 @@ async function registerCommands() {
       options: [
         { name: 'action', description: 'add, remove, or list', type: 3, required: true, choices: [{ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }, { name: 'list', value: 'list' }] },
         { name: 'subject', description: 'Subject name for add/remove', type: 3, required: false },
-        { name: 'level', description: 'Level for the subject (igcse, a_level, university, language, test_prep, other)', type: 3, required: false }
+        { name: 'level', description: 'Filter by level (igcse, a_level, university, below_igcse, language, test_prep, other)', type: 3, required: false, choices: [
+          { name: 'IGCSE', value: 'igcse' },
+          { name: 'A Level', value: 'a_level' },
+          { name: 'University', value: 'university' },
+          { name: 'Below IGCSE', value: 'below_igcse' },
+          { name: 'Language', value: 'language' },
+          { name: 'Test Prep', value: 'test_prep' },
+          { name: 'Other', value: 'other' }
+        ]},
+        { name: 'has_tutor', description: 'If true, only show subjects that have at least one tutor assigned', type: 5, required: false }
       ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
@@ -947,6 +987,15 @@ async function registerCommands() {
       name: 'editad',
       description: 'Edit an existing ad by message id, preloads content',
       options: [{ name: 'messageid', description: 'Message id of the ad to edit', type: 3, required: true }],
+      default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
+    },
+    {
+      name: 'deletead',
+      description: 'Delete an ad and archive it to the staff archive channel',
+      options: [
+        { name: 'messageid', description: 'Message id of the ad to delete (from find-a-tutor)', type: 3, required: true },
+        { name: 'reason', description: 'Reason for deleting the ad (sent to tutor/students)', type: 3, required: false }
+      ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
     {
@@ -2695,6 +2744,72 @@ client.on('interactionCreate', async (interaction) => {
           return;
         }
       }
+      // Handler for tutor_add_level: staff selected a level category, now show filtered subjects + tutor select
+      if (interaction.customId && interaction.customId.startsWith('tutor_add_level|')) {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
+        const chosenRaw = interaction.values && interaction.values[0];
+        const levelKey = normalizeCreateAdLevelKey(chosenRaw);
+        if (!levelKey) return interaction.reply({ content: 'Invalid level selected.', ephemeral: true }).catch(() => {});
+        const levelLabel = CREATEAD_LEVEL_LABELS[levelKey] || levelKey;
+        const key = interaction.user.id;
+        db._tempTutorAdd = db._tempTutorAdd || {};
+        db._tempTutorAdd[key] = db._tempTutorAdd[key] || { subject: null, userid: null };
+        db._tempTutorAdd[key].level = levelKey;
+        saveDB();
+
+        const rows = [];
+        // Subject select filtered by selected level
+        const allSubjects = db.subjects || [];
+        const filteredSubjects = allSubjects.filter(s => {
+          const storedLevel = db.subjectLevels && db.subjectLevels[s];
+          const effectiveLevel = storedLevel || detectLevelFromSubject(s) || 'other';
+          return effectiveLevel === levelKey;
+        });
+        const subjectsForLevel = filteredSubjects.length > 0 ? filteredSubjects : allSubjects;
+        const subjOptions = subjectsForLevel
+          .slice()
+          .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+          .slice(0, 25)
+          .map(s => ({ label: s.substring(0, 100), value: s.substring(0, 100), description: `Subject: ${s}`.substring(0, 50) }));
+        if (!subjOptions.length) {
+          try { await interaction.update({ content: `No subjects found for **${levelLabel}**. Add subjects first with \`/subject add\`.`, components: [] }); } catch (e) { try { await interaction.reply({ content: `No subjects found for **${levelLabel}**.`, ephemeral: true }); } catch (err) {} }
+          return;
+        }
+        rows.push(new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder().setCustomId('tutor_add_select|subject').setPlaceholder(`Select subject (${levelLabel})`).addOptions(subjOptions)
+        ));
+
+        // Tutor select: fetch guild members
+        let members = null;
+        try { members = await interaction.guild.members.fetch({ limit: 50 }).catch(() => null); } catch (e) { members = null; }
+        const tutorOptions = [];
+        if (members && members.size) {
+          for (const m of Array.from(members.values()).slice(0, 24)) {
+            tutorOptions.push({ label: m.user.username.substring(0, 100), value: m.id, description: `(${m.user.tag})`.substring(0, 50) });
+          }
+        }
+        if (!tutorOptions.length) {
+          const known = Array.from(new Set(Object.values(db.subjectTutors || {}).flat())).slice(0, 24);
+          for (const tid of known) {
+            let label = `User ID: ${tid}`;
+            let desc = '';
+            try { const mm = await interaction.guild.members.fetch(tid).catch(() => null); if (mm) { label = mm.user.username; desc = `(${mm.user.tag})`; } else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } } } catch (e) {}
+            tutorOptions.push({ label: label.substring(0, 100), value: String(tid).substring(0, 100), description: desc.substring(0, 50) });
+          }
+        }
+        if (tutorOptions.length) {
+          rows.push(new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder().setCustomId('tutor_add_select|tutor').setPlaceholder('Select tutor to add').addOptions(tutorOptions)
+          ));
+        }
+
+        try {
+          await interaction.update({ content: `Level **${levelLabel}** selected. Now select a subject and tutor:`, components: rows });
+        } catch (e) {
+          try { await interaction.reply({ content: `Level **${levelLabel}** selected. Now select a subject and tutor:`, components: rows, ephemeral: true }); } catch (err) { console.warn('tutor_add_level reply failed', err); }
+        }
+        return;
+      }
       // Handler for /tutor remove select flow: subject and tutor selection
       if (interaction.customId && interaction.customId.startsWith('tutor_remove_select|')) {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
@@ -3116,11 +3231,34 @@ if (cmd === 'close') {
           return interaction.reply({ content: `Subject removed: ${subj}`, ephemeral: true }).catch(() => {});
         } else {
           if (!db.subjects || db.subjects.length === 0) return interaction.reply({ content: 'No subjects found.', ephemeral: true }).catch(() => {});
-          const lines = db.subjects.map(s => {
+          const hasTutorFilter = interaction.options.getBoolean('has_tutor', false);
+          const filterLevel = levelRaw ? (normalizeCreateAdLevelKey(levelRaw) || levelRaw) : null;
+          let subjectsToList = db.subjects;
+          if (filterLevel) {
+            subjectsToList = subjectsToList.filter(s => {
+              const lvl = (db.subjectLevels && db.subjectLevels[s]) || detectLevelFromSubject(s) || 'other';
+              return lvl === filterLevel;
+            });
+          }
+          if (hasTutorFilter) {
+            subjectsToList = subjectsToList.filter(s => ((db.subjectTutors || {})[s] || []).length > 0);
+          }
+          if (subjectsToList.length === 0) {
+            const filterDesc = [filterLevel ? `level: ${filterLevel}` : null, hasTutorFilter ? 'has tutor' : null].filter(Boolean).join(', ');
+            return interaction.reply({ content: `No subjects found${filterDesc ? ` matching (${filterDesc})` : ''}.`, ephemeral: true }).catch(() => {});
+          }
+          const lines = subjectsToList.map(s => {
             const lvl = (db.subjectLevels && db.subjectLevels[s]) || detectLevelFromSubject(s) || '(no level)';
-            return `${s} [${lvl}]`;
+            const tutorCount = (db.subjectTutors[s] || []).length;
+            return `${s} [${lvl}]${tutorCount ? ` (${tutorCount} tutor${tutorCount > 1 ? 's' : ''})` : ''}`;
           });
-          return interaction.reply({ content: `Subjects (${lines.length}):\n${lines.join('\n')}`, ephemeral: true }).catch(() => {});
+          const filterDesc = [filterLevel ? `level: ${CREATEAD_LEVEL_LABELS[filterLevel] || filterLevel}` : null, hasTutorFilter ? 'has tutor' : null].filter(Boolean).join(', ');
+          const chunks = splitMessage(`Subjects (${lines.length})${filterDesc ? ` [${filterDesc}]` : ''}:\n${lines.join('\n')}`, 1900);
+          await interaction.reply({ content: chunks[0], ephemeral: true }).catch(() => {});
+          for (let i = 1; i < chunks.length; i++) {
+            await interaction.followUp({ content: chunks[i], ephemeral: true }).catch(() => {});
+          }
+          return;
         }
       }
 
@@ -3347,9 +3485,27 @@ if (cmd === 'close') {
           if (useridRaw) db._tempTutorAdd[key].userid = String(useridRaw);
           saveDB();
 
+          // For the add flow with no subject: show level dropdown first, then filtered subjects
+          if (action === 'add' && !subj) {
+            const levelOptions = [
+              new StringSelectMenuOptionBuilder().setLabel('University').setValue('university'),
+              new StringSelectMenuOptionBuilder().setLabel('A level').setValue('a_level'),
+              new StringSelectMenuOptionBuilder().setLabel('IGCSE').setValue('igcse'),
+              new StringSelectMenuOptionBuilder().setLabel('Below IGCSE').setValue('below_igcse'),
+              new StringSelectMenuOptionBuilder().setLabel('Language').setValue('language'),
+              new StringSelectMenuOptionBuilder().setLabel('Test Prep').setValue('test_prep'),
+              new StringSelectMenuOptionBuilder().setLabel('Other').setValue('other')
+            ];
+            const levelSelect = new StringSelectMenuBuilder()
+              .setCustomId(`tutor_add_level|${interaction.user.id}`)
+              .setPlaceholder('Select subject level category')
+              .addOptions(levelOptions);
+            return interaction.reply({ content: 'Step 1: Select the subject level category to filter subjects:', components: [new ActionRowBuilder().addComponents(levelSelect)], ephemeral: true }).catch(() => {});
+          }
+
           const rows = [];
 
-          // Subject select if subject not provided
+          // Subject select if subject not provided (for remove flow)
           if (!subj) {
             const subjOptions = (db.subjects || []).slice(0, 25).map(s => ({ label: s.substring(0,100), value: s.substring(0,100), description: `Subject: ${s}`.substring(0,50) }));
             if (subjOptions.length === 0) return interaction.reply({ content: 'No subjects available. Please add subjects first using /subject add', ephemeral: true }).catch(() => {});
@@ -3630,6 +3786,93 @@ if (cmd === 'createad') {
         return;
       }
 
+      // deletead command — archive and remove an ad
+      if (cmd === 'deletead') {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can delete ads.', ephemeral: true }).catch(() => {});
+        const messageId = interaction.options.getString('messageid', true);
+        const reason = interaction.options.getString('reason', false) || 'Ad removed by staff.';
+        await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
+        // Find the ad in database (could be find-a-tutor messageId or category messageId)
+        let adData = db.createAds[messageId] || null;
+        let findMessageId = messageId;
+        let categoryMsgId = null;
+
+        if (!adData) {
+          for (const [msgId, data] of Object.entries(db.createAds || {})) {
+            if (data && data.categoryMessageId === messageId) {
+              adData = data;
+              findMessageId = msgId;
+              categoryMsgId = messageId;
+              break;
+            }
+          }
+        } else {
+          categoryMsgId = adData.categoryMessageId || null;
+        }
+
+        if (!adData) return interaction.editReply({ content: `No ad found with message ID \`${messageId}\` in the database.` }).catch(() => {});
+
+        // Fetch the find-a-tutor message
+        const findChannel = await interaction.guild.channels.fetch(FIND_A_TUTOR_CHANNEL_ID).catch(() => null);
+        let findMsg = null;
+        if (findChannel) findMsg = await findChannel.messages.fetch(findMessageId).catch(() => null);
+
+        // Fetch category channel message
+        let categoryMsg = null;
+        if (adData.categoryChannelId && categoryMsgId) {
+          const categoryCh = await interaction.guild.channels.fetch(adData.categoryChannelId).catch(() => null);
+          if (categoryCh) categoryMsg = await categoryCh.messages.fetch(categoryMsgId).catch(() => null);
+        }
+
+        // Post archived version to archived ads channel (staff-only)
+        if (ARCHIVED_ADS_CHANNEL_ID) {
+          try {
+            const archiveCh = await interaction.guild.channels.fetch(ARCHIVED_ADS_CHANNEL_ID).catch(() => null);
+            if (archiveCh) {
+              const archiveEmbed = buildArchiveEmbed(adData, findMessageId, reason, interaction.user.id);
+              archiveEmbed.addFields({ name: 'Archived By', value: `<@${interaction.user.id}>` });
+              await archiveCh.send({ embeds: [archiveEmbed] }).catch(e => console.warn('deletead: archive post failed', e));
+            }
+          } catch (e) { console.warn('deletead: failed to post to archive channel', e); }
+        }
+
+        // Notify assigned tutor via DM
+        if (adData.tutorId) {
+          try {
+            const tutorUser = await client.users.fetch(adData.tutorId).catch(() => null);
+            if (tutorUser) {
+              const subject = adData.embed?.title || 'your subject';
+              await tutorUser.send(`Your ad for **${subject}** has been removed by staff.\nReason: ${reason}`).catch(() => {});
+            }
+          } catch (e) { console.warn('deletead: failed to DM tutor', e); }
+        }
+
+        // Notify assigned students via DM
+        const assignedStudents = getStudentsAssignedToTutor(adData.tutorId);
+        for (const studentId of assignedStudents) {
+          try {
+            const studentUser = await client.users.fetch(studentId).catch(() => null);
+            if (studentUser) {
+              const subject = adData.embed?.title || 'a subject';
+              await studentUser.send(`The ad for **${subject}** has been closed. If you need further assistance, please contact staff.`).catch(() => {});
+            }
+          } catch (e) { console.warn('deletead: failed to DM student', e); }
+        }
+
+        // Delete messages from Discord channels
+        if (findMsg) await findMsg.delete().catch(e => console.warn('deletead: find-a-tutor delete failed', e));
+        if (categoryMsg) await categoryMsg.delete().catch(e => console.warn('deletead: category delete failed', e));
+
+        // Archive in DB and remove from active ads
+        if (!db.archivedAds) db.archivedAds = {};
+        db.archivedAds[findMessageId] = { ...adData, archivedAt: Date.now(), archivedBy: interaction.user.id, reason };
+        delete db.createAds[findMessageId];
+        saveDB();
+
+        return interaction.editReply({ content: `Ad deleted and archived.${ARCHIVED_ADS_CHANNEL_ID ? ` Check <#${ARCHIVED_ADS_CHANNEL_ID}>.` : ''}` }).catch(() => {});
+      }
+
       // sticky command shows modal (prefill)
       if (cmd === 'sticky') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can set sticky message.', ephemeral: true }).catch(() => {});
@@ -3683,7 +3926,7 @@ if (cmd === 'createad') {
 
       if (cmd === 'staffhelp') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can access this.', ephemeral: true }).catch(() => {});
-        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list\n/tutor add/remove/list/info\n/createad\n/editad\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove\n/reviewreminder\n/migrateads [force:true]`, ephemeral: true }).catch(() => {});
+        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list [level] [has_tutor]\n/tutor add/remove/list/info\n/createad\n/editad\n/deletead\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove\n/reviewreminder\n/migrateads [force:true]`, ephemeral: true }).catch(() => {});
       }
 
       // bumpleaderboard command
@@ -4236,6 +4479,73 @@ client.on('messageDelete', async (message) => {
       body: JSON.stringify({ event: 'messageDelete', messageId: message.id, channelId: message.channel.id })
     });
   } catch (e) { console.warn('ads sync messageDelete failed', e); }
+});
+
+// guildMemberRemove: auto-archive active ads when a tutor leaves the guild
+client.on('guildMemberRemove', async (member) => {
+  try {
+    if (String(member.guild.id) !== String(GUILD_ID)) return;
+    const userId = member.id;
+
+    // Find all active ads linked to this tutor
+    const tutorAds = Object.entries(db.createAds || {}).filter(([, data]) => data && String(data.tutorId) === String(userId));
+    if (!tutorAds.length) return;
+
+    const guild = member.guild;
+    const reason = 'Tutor left the server.';
+
+    for (const [msgId, adData] of tutorAds) {
+      try {
+        // Post archived version to staff archive channel
+        if (ARCHIVED_ADS_CHANNEL_ID) {
+          const archiveCh = await guild.channels.fetch(ARCHIVED_ADS_CHANNEL_ID).catch(() => null);
+          if (archiveCh) {
+            const archiveEmbed = buildArchiveEmbed(adData, msgId, reason, 'system');
+            await archiveCh.send({ embeds: [archiveEmbed] }).catch(e => console.warn('guildMemberRemove: archive post failed', e));
+          }
+        }
+
+        // Notify assigned students via DM
+        const assignedStudents = getStudentsAssignedToTutor(userId);
+        for (const studentId of assignedStudents) {
+          try {
+            const studentUser = await client.users.fetch(studentId).catch(() => null);
+            if (studentUser) {
+              const subject = adData.embed?.title || 'a subject';
+              await studentUser.send(`The tutor for **${subject}** has left the server. If you need further assistance, please contact staff.`).catch(() => {});
+            }
+          } catch (e) { console.warn('guildMemberRemove: failed to DM student', e); }
+        }
+
+        // Delete the ad message from find-a-tutor channel
+        const findChannel = await guild.channels.fetch(FIND_A_TUTOR_CHANNEL_ID).catch(() => null);
+        if (findChannel) {
+          const findMsg = await findChannel.messages.fetch(msgId).catch(() => null);
+          if (findMsg) await findMsg.delete().catch(e => console.warn('guildMemberRemove: find-a-tutor delete failed', e));
+        }
+
+        // Delete category channel copy
+        if (adData.categoryChannelId && adData.categoryMessageId) {
+          const categoryCh = await guild.channels.fetch(adData.categoryChannelId).catch(() => null);
+          if (categoryCh) {
+            const categoryMsg = await categoryCh.messages.fetch(adData.categoryMessageId).catch(() => null);
+            if (categoryMsg) await categoryMsg.delete().catch(e => console.warn('guildMemberRemove: category delete failed', e));
+          }
+        }
+
+        // Move from createAds to archivedAds
+        if (!db.archivedAds) db.archivedAds = {};
+        db.archivedAds[msgId] = { ...adData, archivedAt: Date.now(), archivedBy: 'system', reason };
+        delete db.createAds[msgId];
+        saveDB();
+      } catch (e) {
+        console.warn(`guildMemberRemove: error archiving ad ${msgId} for tutor ${userId}`, e);
+        try { notifyStaffError(e, 'guildMemberRemove archiveAd'); } catch (err) {}
+      }
+    }
+  } catch (e) {
+    console.warn('guildMemberRemove handler error', e);
+  }
 });
 
 // Review reminder worker
