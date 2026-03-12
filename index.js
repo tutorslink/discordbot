@@ -4166,14 +4166,27 @@ if (cmd === 'createad') {
               continue;
             }
 
-            const shortContent = [
-              `**${subject}**`,
-              tutorId ? `Tutor: <@${tutorId}>` : null,
-              embedDescription ? embedDescription.split('\n').slice(0, MIGRATE_MAX_DESCRIPTION_LINES).join('\n') : null,
-              FIND_A_TUTOR_CHANNEL_ID ? `*See full ad in <#${FIND_A_TUTOR_CHANNEL_ID}>*` : null
-            ].filter(Boolean).join('\n');
+            const truncatedDesc = embedDescription
+              ? embedDescription.split('\n').slice(0, MIGRATE_MAX_DESCRIPTION_LINES).join('\n')
+              : null;
+            const permalink = FIND_A_TUTOR_CHANNEL_ID
+              ? `https://discord.com/channels/${GUILD_ID}/${FIND_A_TUTOR_CHANNEL_ID}/${messageId}`
+              : null;
 
-            const sent = await categoryCh.send({ content: shortContent }).catch(() => null);
+            const migrateEmbed = new EmbedBuilder().setTitle(subject);
+            if (truncatedDesc) migrateEmbed.setDescription(truncatedDesc);
+            if (permalink) migrateEmbed.setFooter({ text: `See full ad: ${permalink}` });
+            if (adData.embed && adData.embed.color) {
+              try { migrateEmbed.setColor(adData.embed.color); } catch (e) {}
+            }
+
+            const migrateRow = new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId(`view_full_details|${subject}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
+              new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
+            );
+
+            const messageContent = tutorId ? `Tutor: <@${tutorId}>` : undefined;
+            const sent = await categoryCh.send({ content: messageContent, embeds: [migrateEmbed], components: [migrateRow] }).catch(() => null);
             if (sent) {
               db.createAds[messageId].categoryChannelId = categoryCh.id;
               db.createAds[messageId].categoryMessageId = sent.id;
