@@ -256,7 +256,8 @@ function detectLevelFromSubject(subjectName) {
  *  1. prefix + bare name in the configured category        (e.g. ig-maths)
  *  2. bare name only in the configured category            (e.g. mandarin-chinese)
  *  3. Re-detect level from subject name and retry 1 & 2   (handles missing level field)
- *  4. Try every other level config                         (last resort)
+ *  4. Walk every other level config as last resort         (only when createIfMissing=false)
+ *  5. Create the channel in the correct category           (only when createIfMissing=true)
  */
 async function findSubjectChannel(guild, levelKey, subjectName, createIfMissing = false) {
   // Inner helper: search one level config for the channel
@@ -311,8 +312,10 @@ async function findSubjectChannel(guild, levelKey, subjectName, createIfMissing 
     }
   }
 
-  // 3. Last resort: walk every remaining level config
-  if (!channel) {
+  // 3. Last resort: walk every remaining level config.
+  // Skipped when createIfMissing=true so we never post to a wrong-category channel —
+  // instead we fall through to step 4 which creates the correct channel.
+  if (!channel && !createIfMissing) {
     for (const k of Object.keys(CREATEAD_LEVEL_CONFIG)) {
       if (k === levelKey) continue;
       channel = tryLevel(k);
@@ -1166,7 +1169,16 @@ client.on('interactionCreate', async (interaction) => {
         detailsMessage += `**Class Type:** ${details.classType || 'N/A'}\n`;
         detailsMessage += `**Class Duration:** ${details.classDuration || 'N/A'}\n`;
         detailsMessage += `**Monthly Schedule:** ${details.monthlySchedule || 'N/A'}\n`;
-        detailsMessage += `**Price:** $${details.price || 'Contact for pricing'}\n`;
+        if (details.price && details.price1on1) {
+          detailsMessage += `**Price (Group):** $${details.price}\n`;
+          detailsMessage += `**Price (1-on-1):** $${details.price1on1}\n`;
+        } else if (details.price) {
+          detailsMessage += `**Price:** $${details.price}\n`;
+        } else if (details.price1on1) {
+          detailsMessage += `**Price (1-on-1):** $${details.price1on1}\n`;
+        } else {
+          detailsMessage += `**Price:** Contact for pricing\n`;
+        }
         detailsMessage += `**Timezone:** ${details.timezone || 'N/A'}\n\n`;
         
         if (details.tutorMessage) {
@@ -1315,7 +1327,7 @@ client.on('interactionCreate', async (interaction) => {
           const tutorLabel = new LabelBuilder().setLabel(clampLabel('Tutor (Optional)')).setStringSelectMenuComponent(tutorSelect);
 
           const subjectDetailsInput = new TextInputBuilder().setCustomId('ad_subject_details').setLabel(clampLabel('Subject Level & Codes')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Subject Level: \nSubject codes: ', 1000));
-          const tutorDetailsInput = new TextInputBuilder().setCustomId('ad_tutor_details').setLabel(clampLabel('Tutor Details & Pricing')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Languages: \nClass Type: \nClass Duration: \nClasses/week: \nClasses/month: \nPrice per Class (USD) for Group classes: \nTime zone:', 1000));
+          const tutorDetailsInput = new TextInputBuilder().setCustomId('ad_tutor_details').setLabel(clampLabel('Tutor Details & Pricing')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Languages: \nClass Type: \nClass Duration: \nClasses/week: \nClasses/month: \nPrice per Class (USD) for Group classes: \nPrice per Class (USD) for 1-on-1 classes: \nTime zone:', 1000));
           const optionalFieldsInput = new TextInputBuilder().setCustomId('ad_optional_fields').setLabel(clampLabel('Optional: Message, Testimonials, Payment, Color, Role')).setStyle(TextInputStyle.Paragraph).setRequired(false).setValue(clampLabel('Message from tutor:\nStudent Testimonials:\nPayment Terms: 100% upfront before classes begin\nColor: \nRole ID: ', 1000));
 
           const modal = new ModalBuilder()
@@ -1928,6 +1940,7 @@ client.on('interactionCreate', async (interaction) => {
             let classDuration = '';
             let monthlySchedule = '';
             let price = '';
+            let price1on1 = '';
             let timezone = '';
             if (tutorDetails) {
               const langMatch = tutorDetails.match(/Languages?:\s*(.+?)(?:\n|$)/i);
@@ -1935,7 +1948,11 @@ client.on('interactionCreate', async (interaction) => {
               const durationMatch = tutorDetails.match(/Class Duration:\s*(.+?)(?:\n|$)/i);
               const weekMatch = tutorDetails.match(/Classes(?:\/| per )week:\s*(.+?)(?:\n|$)/i);
               const monthMatch = tutorDetails.match(/Classes(?:\/| per )month:\s*(.+?)(?:\n|$)/i);
-              const priceMatch = tutorDetails.match(/Price per Class.*?:\s*(.+?)(?:\n|$)/i);
+              // Specific matches for group and 1-on-1 prices
+              const priceGroupMatch = tutorDetails.match(/Price per Class[^:\n]*Group[^:\n]*:\s*(.+?)(?:\n|$)/i);
+              const price1on1Match = tutorDetails.match(/Price per Class[^:\n]*1[-\s–]on[-\s–]1[^:\n]*:\s*(.+?)(?:\n|$)/i);
+              // Backward-compat: generic "Price per Class" for ads without the Group/1-on-1 labels
+              const priceGenericMatch = (!priceGroupMatch && !price1on1Match) ? tutorDetails.match(/Price per Class[^:\n]*:\s*(.+?)(?:\n|$)/i) : null;
               const tzMatch = tutorDetails.match(/Time zone:\s*(.+?)(?:\n|$)/i);
               languages = langMatch ? langMatch[1].trim() : '';
               classType = typeMatch ? typeMatch[1].trim() : '';
@@ -1952,7 +1969,8 @@ client.on('interactionCreate', async (interaction) => {
                 const scheduleMatch = tutorDetails.match(/Monthly Schedule:\s*(.+?)(?:\n|$)/i);
                 monthlySchedule = scheduleMatch ? scheduleMatch[1].trim() : '';
               }
-              price = priceMatch ? priceMatch[1].trim() : '';
+              price = priceGroupMatch ? priceGroupMatch[1].trim() : (priceGenericMatch ? priceGenericMatch[1].trim() : '');
+              price1on1 = price1on1Match ? price1on1Match[1].trim() : '';
               timezone = tzMatch ? tzMatch[1].trim() : '';
             }
             
@@ -1992,11 +2010,20 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             // Build concise message for main embed (subject shown as embed title)
+            // Only include non-empty fields to avoid messy blank lines.
             let message = '';
-            message += `**Level:** ${subjectLevel}\n`;
-            message += `**Price:** $${price}\n`;
-            message += `**Timezone:** ${timezone}\n`;
-            message += `**Languages:** ${languages}\n\n`;
+            if (subjectLevel) message += `**Level:** ${subjectLevel}\n`;
+            if (price && price1on1) {
+              message += `**Price (Group):** $${price}\n`;
+              message += `**Price (1-on-1):** $${price1on1}\n`;
+            } else if (price) {
+              message += `**Price:** $${price}\n`;
+            } else if (price1on1) {
+              message += `**Price (1-on-1):** $${price1on1}\n`;
+            }
+            if (timezone) message += `**Timezone:** ${timezone}\n`;
+            if (languages) message += `**Languages:** ${languages}\n`;
+            if (message) message += '\n';
             message += `Click "View Full Details" below for more information, or "Talk to Tutors!" to start a conversation.`;
 
             // Generate a unique ad code (e.g. IG-1, AL-3) for this ad
@@ -2011,6 +2038,7 @@ client.on('interactionCreate', async (interaction) => {
               classDuration,
               monthlySchedule,
               price,
+              price1on1,
               timezone,
               tutorMessage,
               testimonials,
