@@ -112,13 +112,13 @@ if (missingVars.length > 0) {
 // --- CreateAd categorisation (posts to find-a-tutor AND a subject channel) ---
 // Dynamic discovery: channels are found at runtime by category name + subject prefix.
 const CREATEAD_LEVEL_CONFIG = {
-  igcse:       { categoryName: 'IGCSE Tutors',       prefix: 'ig-' },
+  igcse:       { categoryName: 'IGCSE Tutors',       prefix: 'ig-',        categoryId: '1429169884880961566' },
   // 'asl-al-' is the server-defined prefix for A-Level subject channels (e.g. asl-al-maths)
-  a_level:     { categoryName: 'AS/A Level Tutors',  prefix: 'asl-al-' },
-  below_igcse: { categoryName: 'Below IGCSE Tutors', prefix: '' },
-  university:  { categoryName: 'University Tutors',  prefix: 'uni-' },
-  language:    { categoryName: 'Language Tutors',    prefix: 'lang-' },
-  test_prep:   { categoryName: 'Test Prep Tutors',   prefix: 'testprep-' },
+  a_level:     { categoryName: 'AS/A Level Tutors',  prefix: 'asl-al-',    categoryId: '1432685624019910817' },
+  below_igcse: { categoryName: 'Below IGCSE Tutors', prefix: '',           categoryId: '1435271914628190329' },
+  university:  { categoryName: 'University Tutors',  prefix: 'uni-',       categoryId: '1480296136664158431' },
+  language:    { categoryName: 'Language Tutors',    prefix: 'lang-',      categoryId: '1480296166552768595' },
+  test_prep:   { categoryName: 'Test Prep Tutors',   prefix: 'testprep-',  categoryId: '1480296220173009038' },
   other:       { categoryName: 'Other Tutors',       prefix: '' },
 };
 const CREATEAD_LEVEL_LABELS = {
@@ -265,12 +265,15 @@ async function findSubjectChannel(guild, levelKey, subjectName, createIfMissing 
     const config = CREATEAD_LEVEL_CONFIG[key];
     if (!config) return null;
 
-    const category = guild.channels.cache.find(
-      c => c.type === ChannelType.GuildCategory &&
-           c.name.toLowerCase() === config.categoryName.toLowerCase()
-    );
+    // Prefer lookup by hard-coded category ID; fall back to name-based search
+    const category = config.categoryId
+      ? guild.channels.cache.get(config.categoryId)
+      : guild.channels.cache.find(
+          c => c.type === ChannelType.GuildCategory &&
+               c.name.toLowerCase() === config.categoryName.toLowerCase()
+        );
     if (!category) {
-      if (process.env.DEBUG_MIGRATEADS) console.debug(`[migrateads] category not found: "${config.categoryName}" for level="${key}"`);
+      if (process.env.DEBUG_MIGRATEADS) console.debug(`[migrateads] category not found: "${config.categoryName}" (id=${config.categoryId || 'n/a'}) for level="${key}"`);
       return null;
     }
 
@@ -328,39 +331,45 @@ async function findSubjectChannel(guild, levelKey, subjectName, createIfMissing 
     const config = CREATEAD_LEVEL_CONFIG[levelKey];
     if (config) {
       try {
-        // Find or create the category
-        let category = guild.channels.cache.find(
-          c => c.type === ChannelType.GuildCategory &&
-               c.name.toLowerCase() === config.categoryName.toLowerCase()
-        );
-        if (!category) {
+        // Resolve the category: prefer the hard-coded ID, fall back to name search,
+        // and only create a new category as a last resort (for levels without an ID).
+        let category = config.categoryId
+          ? guild.channels.cache.get(config.categoryId)
+          : guild.channels.cache.find(
+              c => c.type === ChannelType.GuildCategory &&
+                   c.name.toLowerCase() === config.categoryName.toLowerCase()
+            );
+        if (!category && !config.categoryId) {
           category = await guild.channels.create({
             name: config.categoryName,
             type: ChannelType.GuildCategory,
           });
           console.log(`findSubjectChannel: created category "${config.categoryName}"`);
         }
+        if (!category) {
+          console.warn(`findSubjectChannel: category not found for level "${levelKey}" (id=${config.categoryId}), cannot create channel for subject "${subjectName}"`);
+        } else {
+          // Normalise subject name → channel name
+          const bare = subjectName
+            .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language|test\s*prep)\s+/i, '')
+            .toLowerCase()
+            .replace(/\s+/g, '-')
+            .replace(/[^a-z0-9-]/g, '')  // strip Discord-invalid chars
+            .replace(/-{2,}/g, '-')      // collapse multiple hyphens
+            .replace(/^-|-$/g, '');      // trim leading/trailing hyphens
 
-        // Normalise subject name → channel name
-        const bare = subjectName
-          .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language|test\s*prep)\s+/i, '')
-          .toLowerCase()
-          .replace(/\s+/g, '-')
-          .replace(/[^a-z0-9-]/g, '')  // strip Discord-invalid chars
-          .replace(/-{2,}/g, '-')      // collapse multiple hyphens
-          .replace(/^-|-$/g, '');      // trim leading/trailing hyphens
+          const channelName = (config.prefix + bare).substring(0, 100);
 
-        const channelName = (config.prefix + bare).substring(0, 100);
-
-        channel = await guild.channels.create({
-          name: channelName,
-          type: ChannelType.GuildText,
-          parent: category.id,
-          permissionOverwrites: [
-            { id: guild.roles.everyone, allow: [PermissionFlagsBits.ViewChannel] },
-          ],
-        });
-        console.log(`findSubjectChannel: created channel "#${channelName}" under "${config.categoryName}"`);
+          channel = await guild.channels.create({
+            name: channelName,
+            type: ChannelType.GuildText,
+            parent: category.id,
+            permissionOverwrites: [
+              { id: guild.roles.everyone, allow: [PermissionFlagsBits.ViewChannel] },
+            ],
+          });
+          console.log(`findSubjectChannel: created channel "#${channelName}" under "${config.categoryName}"`);
+        }
       } catch (e) {
         console.warn('findSubjectChannel: failed to create channel', e);
       }
