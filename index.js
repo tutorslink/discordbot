@@ -112,13 +112,13 @@ if (missingVars.length > 0) {
 // --- CreateAd categorisation (posts to find-a-tutor AND a subject channel) ---
 // Dynamic discovery: channels are found at runtime by category name + subject prefix.
 const CREATEAD_LEVEL_CONFIG = {
-  igcse:       { categoryName: 'IGCSE Tutors',       prefix: 'ig-' },
+  igcse:       { categoryName: 'IGCSE Tutors',       prefix: 'ig-',        categoryId: '1429169884880961566' },
   // 'asl-al-' is the server-defined prefix for A-Level subject channels (e.g. asl-al-maths)
-  a_level:     { categoryName: 'AS/A Level Tutors',  prefix: 'asl-al-' },
-  below_igcse: { categoryName: 'Below IGCSE Tutors', prefix: '' },
-  university:  { categoryName: 'University Tutors',  prefix: 'uni-' },
-  language:    { categoryName: 'Language Tutors',    prefix: 'lang-' },
-  test_prep:   { categoryName: 'Test Prep Tutors',   prefix: 'testprep-' },
+  a_level:     { categoryName: 'AS/A Level Tutors',  prefix: 'asl-al-',    categoryId: '1432685624019910817' },
+  below_igcse: { categoryName: 'Below IGCSE Tutors', prefix: '',           categoryId: '1435271914628190329' },
+  university:  { categoryName: 'University Tutors',  prefix: 'uni-',       categoryId: '1480296136664158431' },
+  language:    { categoryName: 'Language Tutors',    prefix: 'lang-',      categoryId: '1480296166552768595' },
+  test_prep:   { categoryName: 'Test Prep Tutors',   prefix: 'testprep-',  categoryId: '1480296220173009038' },
   other:       { categoryName: 'Other Tutors',       prefix: '' },
 };
 const CREATEAD_LEVEL_LABELS = {
@@ -265,12 +265,15 @@ async function findSubjectChannel(guild, levelKey, subjectName, createIfMissing 
     const config = CREATEAD_LEVEL_CONFIG[key];
     if (!config) return null;
 
-    const category = guild.channels.cache.find(
-      c => c.type === ChannelType.GuildCategory &&
-           c.name.toLowerCase() === config.categoryName.toLowerCase()
-    );
+    // Prefer lookup by hard-coded category ID; fall back to name-based search
+    const category = config.categoryId
+      ? guild.channels.cache.get(config.categoryId)
+      : guild.channels.cache.find(
+          c => c.type === ChannelType.GuildCategory &&
+               c.name.toLowerCase() === config.categoryName.toLowerCase()
+        );
     if (!category) {
-      if (process.env.DEBUG_MIGRATEADS) console.debug(`[migrateads] category not found: "${config.categoryName}" for level="${key}"`);
+      if (process.env.DEBUG_MIGRATEADS) console.debug(`[migrateads] category not found: "${config.categoryName}" (id=${config.categoryId || 'n/a'}) for level="${key}"`);
       return null;
     }
 
@@ -328,39 +331,45 @@ async function findSubjectChannel(guild, levelKey, subjectName, createIfMissing 
     const config = CREATEAD_LEVEL_CONFIG[levelKey];
     if (config) {
       try {
-        // Find or create the category
-        let category = guild.channels.cache.find(
-          c => c.type === ChannelType.GuildCategory &&
-               c.name.toLowerCase() === config.categoryName.toLowerCase()
-        );
-        if (!category) {
+        // Resolve the category: prefer the hard-coded ID, fall back to name search,
+        // and only create a new category as a last resort (for levels without an ID).
+        let category = config.categoryId
+          ? guild.channels.cache.get(config.categoryId)
+          : guild.channels.cache.find(
+              c => c.type === ChannelType.GuildCategory &&
+                   c.name.toLowerCase() === config.categoryName.toLowerCase()
+            );
+        if (!category && !config.categoryId) {
           category = await guild.channels.create({
             name: config.categoryName,
             type: ChannelType.GuildCategory,
           });
           console.log(`findSubjectChannel: created category "${config.categoryName}"`);
         }
+        if (!category) {
+          console.warn(`findSubjectChannel: category not found for level "${levelKey}" (id=${config.categoryId}), cannot create channel for subject "${subjectName}"`);
+        } else {
+          // Normalise subject name → channel name
+          const bare = subjectName
+            .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language|test\s*prep)\s+/i, '')
+            .toLowerCase()
+            .replace(/\s+/g, '-')
+            .replace(/[^a-z0-9-]/g, '')  // strip Discord-invalid chars
+            .replace(/-{2,}/g, '-')      // collapse multiple hyphens
+            .replace(/^-|-$/g, '');      // trim leading/trailing hyphens
 
-        // Normalise subject name → channel name
-        const bare = subjectName
-          .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language|test\s*prep)\s+/i, '')
-          .toLowerCase()
-          .replace(/\s+/g, '-')
-          .replace(/[^a-z0-9-]/g, '')  // strip Discord-invalid chars
-          .replace(/-{2,}/g, '-')      // collapse multiple hyphens
-          .replace(/^-|-$/g, '');      // trim leading/trailing hyphens
+          const channelName = (config.prefix + bare).substring(0, 100);
 
-        const channelName = (config.prefix + bare).substring(0, 100);
-
-        channel = await guild.channels.create({
-          name: channelName,
-          type: ChannelType.GuildText,
-          parent: category.id,
-          permissionOverwrites: [
-            { id: guild.roles.everyone, allow: [PermissionFlagsBits.ViewChannel] },
-          ],
-        });
-        console.log(`findSubjectChannel: created channel "#${channelName}" under "${config.categoryName}"`);
+          channel = await guild.channels.create({
+            name: channelName,
+            type: ChannelType.GuildText,
+            parent: category.id,
+            permissionOverwrites: [
+              { id: guild.roles.everyone, allow: [PermissionFlagsBits.ViewChannel] },
+            ],
+          });
+          console.log(`findSubjectChannel: created channel "#${channelName}" under "${config.categoryName}"`);
+        }
       } catch (e) {
         console.warn('findSubjectChannel: failed to create channel', e);
       }
@@ -1000,7 +1009,7 @@ async function registerCommands() {
       options: [
         { name: 'action', description: 'add, remove, list, info, or notes', type: 3, required: true, choices: [{ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }, { name: 'list', value: 'list' }, { name: 'info', value: 'info' }, { name: 'notes', value: 'notes' }] },
         { name: 'user', description: 'Mention or select the tutor user (e.g. @username)', type: 6, required: false },
-        { name: 'subject', description: 'Subject for mapping', type: 3, required: false }
+        { name: 'subject', description: 'Subject for mapping (autocomplete shows subjects with tutors)', type: 3, required: false, autocomplete: true }
       ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
@@ -1129,6 +1138,32 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isChatInputCommand() && 
         (interaction.commandName === 'startdemo' || interaction.commandName === 'authentication')) {
       return; // Let demo.js handle these
+    }
+
+    // Autocomplete handler for /tutor subject option
+    if (interaction.isAutocomplete() && interaction.commandName === 'tutor') {
+      const focused = interaction.options.getFocused();
+      const action = interaction.options.getString('action');
+      const userOpt = interaction.options.getUser('user');
+      let subjects;
+      if ((action === 'remove' || action === 'list') && userOpt) {
+        // Only show subjects the selected tutor is assigned to
+        subjects = Object.entries(db.subjectTutors || {})
+          .filter(([, ids]) => ids.includes(userOpt.id))
+          .map(([s]) => s);
+      } else {
+        // Show subjects that have at least one tutor assigned
+        subjects = Object.entries(db.subjectTutors || {})
+          .filter(([, ids]) => ids.length > 0)
+          .map(([s]) => s);
+      }
+      const query = String(focused || '').toLowerCase();
+      const choices = subjects
+        .filter(s => !query || s.toLowerCase().includes(query))
+        .slice(0, 25)
+        .map(s => ({ name: s, value: s }));
+      await interaction.respond(choices).catch(() => {});
+      return;
     }
     
     // Log all modal submits at the top level
@@ -2143,12 +2178,24 @@ client.on('interactionCreate', async (interaction) => {
                 }
             }
 
-            // If this createad was opened from modmail, close the originating ticket channel
+            // If this createad was opened from modmail, send a prompt for another ad instead of auto-closing
             try {
-              if (origin === 'modmail' && originChannel && db._modmail_helpers && typeof db._modmail_helpers.closeTicketByChannel === 'function') {
-                await db._modmail_helpers.closeTicketByChannel(originChannel, `${interaction.user.tag} (createad)`);
+              if (origin === 'modmail' && originChannel) {
+                const modmailCh = await client.channels.fetch(originChannel).catch(() => null);
+                if (modmailCh) {
+                  const anotherBtn = new ButtonBuilder()
+                    .setCustomId(`mm_create_ad|${originChannel}|yes`)
+                    .setLabel('✅ Create Another Ad')
+                    .setStyle(ButtonStyle.Success);
+                  const doneBtn = new ButtonBuilder()
+                    .setCustomId(`mm_close_after_ads|${originChannel}`)
+                    .setLabel('✅ Done — Close Ticket')
+                    .setStyle(ButtonStyle.Primary);
+                  const row = new ActionRowBuilder().addComponents(anotherBtn, doneBtn);
+                  await modmailCh.send({ content: 'Ad created! Would you like to create another ad, or close the ticket?', components: [row] }).catch(() => {});
+                }
               }
-            } catch (e) { console.warn('Failed to close originating modmail ticket after createad', e); }
+            } catch (e) { console.warn('Failed to send post-createad modmail prompt', e); }
 
             // Trigger sticky repost in find channel so sticky is always fresh after createad
             try {
@@ -3540,22 +3587,26 @@ if (cmd === 'close') {
             const lines = [];
             for (const s of db.subjects) {
               const ids = db.subjectTutors[s] || [];
-              if (ids.length === 0) lines.push(`${s}: (none)`);
-              else {
-                const formatted = [];
-                for (const id of ids) {
-                  let label = id;
-                  try {
-                    const m = await interaction.guild.members.fetch(id).catch(() => null);
-                    if (m) label = `${m.user.username} (${id})`;
-                    else { const u = await client.users.fetch(id).catch(() => null); if (u) label = `${u.username} (${id})`; }
-                  } catch (e) {}
-                  formatted.push(label);
-                }
-                lines.push(`${s}: ${formatted.join(', ')}`);
+              if (ids.length === 0) continue; // skip subjects with no tutors
+              const formatted = [];
+              for (const id of ids) {
+                let label = id;
+                try {
+                  const m = await interaction.guild.members.fetch(id).catch(() => null);
+                  if (m) label = `${m.user.username} (${id})`;
+                  else { const u = await client.users.fetch(id).catch(() => null); if (u) label = `${u.username} (${id})`; }
+                } catch (e) {}
+                formatted.push(label);
               }
+              lines.push(`${s}: ${formatted.join(', ')}`);
             }
-            return interaction.reply({ content: lines.join('\n'), ephemeral: true }).catch(() => {});
+            if (lines.length === 0) return interaction.reply({ content: 'No subjects with assigned tutors found.', ephemeral: true }).catch(() => {});
+            const chunks = splitMessage(lines.join('\n'), 1900);
+            await interaction.reply({ content: chunks[0], ephemeral: true }).catch(() => {});
+            for (let i = 1; i < chunks.length; i++) {
+              await interaction.followUp({ content: chunks[i], ephemeral: true }).catch(() => {});
+            }
+            return;
           }
         }
 
@@ -3611,6 +3662,32 @@ if (cmd === 'close') {
 
         if (!isStaff(interaction.member)) {
           return interaction.reply({ content: 'Only staff can manage tutors.', ephemeral: true }).catch(() => {});
+        }
+
+        // When /tutor remove user:@X is used without a subject: show only that tutor's subjects
+        if (action === 'remove' && useridRaw && !subj) {
+          const userid = String(useridRaw);
+          const tutorSubjects = Object.entries(db.subjectTutors || {})
+            .filter(([, ids]) => ids.includes(userid))
+            .map(([s]) => s);
+          if (tutorSubjects.length === 0) {
+            return interaction.reply({ content: `<@${userid}> is not assigned to any subjects.`, ephemeral: true }).catch(() => {});
+          }
+          // Store the userid in _tempTutorRemove so the select handler can complete the removal
+          db._tempTutorRemove = db._tempTutorRemove || {};
+          const key = interaction.user.id;
+          db._tempTutorRemove[key] = { subject: null, userid };
+          saveDB();
+          const subjectOpts = tutorSubjects.slice(0, 25).map(s => ({ label: s.substring(0, 100), value: s.substring(0, 100) }));
+          const subjectSelect = new StringSelectMenuBuilder()
+            .setCustomId('tutor_remove_select|subject')
+            .setPlaceholder('Select subject to remove tutor from')
+            .addOptions(subjectOpts);
+          return interaction.reply({
+            content: `Select the subject to remove <@${userid}> from:`,
+            components: [new ActionRowBuilder().addComponents(subjectSelect)],
+            ephemeral: true
+          }).catch(() => {});
         }
 
         // If add/remove called without both userid and subject, present selection UI

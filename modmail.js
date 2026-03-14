@@ -822,6 +822,18 @@ ${String(err && (err.stack || err))}`;
         return;
       }
 
+      // Close ticket after all ads are done (mm_close_after_ads|channelId)
+      if (custom.startsWith('mm_close_after_ads|')) {
+        const channelId = custom.split('|')[1];
+        const ticket = db.modmail.byChannel[channelId];
+        if (!ticket) return safeReply(interaction, { content: 'Ticket not found.', ephemeral: true });
+        if (!isStaff(interaction.member)) return safeReply(interaction, { content: 'Only staff can close.', ephemeral: true });
+        await interaction.deferUpdate().catch(() => {});
+        await interaction.channel.send('Closing ticket...').catch(() => {});
+        await closeTicket(ticket, `${interaction.user.tag} (staff)`);
+        return;
+      }
+
       // Create ad buttons (mm_create_ad|channelId|yes/no)
       if (custom.startsWith('mm_create_ad|')) {
         const parts = custom.split('|');
