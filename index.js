@@ -81,7 +81,7 @@ const {
   FIND_A_TUTOR_CHANNEL_ID,
   TUTORS_FEED_CHANNEL_ID,
   TICKET_CATEGORY_ID,
-  TRANSCRIPTS_CHANNEL_ID = '1482394472653525143',
+  TRANSCRIPTS_CHANNEL_ID = '1443735527596621934', // "transcripts" channel (production fallback; override via env var)
   TUTOR_CHAT_CHANNEL_ID,
   TUTOR_POLICIES_CHANNEL_ID,
   MODMAIL_CATEGORY_ID,
@@ -111,14 +111,20 @@ if (missingVars.length > 0) {
 
 // --- CreateAd categorisation (posts to find-a-tutor AND a subject channel) ---
 // Dynamic discovery: channels are found at runtime by category name + subject prefix.
+// categoryId fields were removed because the previous values referenced a test server
+// (guild different from 1360708397850431488). Without a categoryId, findSubjectChannel()
+// falls back to searching the guild's channel cache by categoryName, which is reliable
+// as long as the categories exist on the production server with these exact names.
+// To restore ID-based fast-path lookups, run /exportchannels on the production server
+// and add the correct IDs here.
 const CREATEAD_LEVEL_CONFIG = {
-  igcse:       { categoryName: 'IGCSE Tutors',       prefix: 'ig-',        categoryId: '1482394427413762058' },
+  igcse:       { categoryName: 'IGCSE Tutors',       prefix: 'ig-'        },
   // 'asl-al-' is the server-defined prefix for A-Level subject channels (e.g. asl-al-maths)
-  a_level:     { categoryName: 'AS/A Level Tutors',  prefix: 'asl-al-',    categoryId: '1482394425933168782' },
-  below_igcse: { categoryName: 'Below IGCSE Tutors', prefix: '',           categoryId: '1482394428407681097' },
-  university:  { categoryName: 'University Tutors',  prefix: 'uni-',       categoryId: '1482394429967827005' },
-  language:    { categoryName: 'Language Tutors',    prefix: 'lang-',      categoryId: '1482394434548011168' },
-  test_prep:   { categoryName: 'Test Prep Tutors',   prefix: 'testprep-',  categoryId: '1482394436054024212' },
+  a_level:     { categoryName: 'AS/A Level Tutors',  prefix: 'asl-al-'   },
+  below_igcse: { categoryName: 'Below IGCSE Tutors', prefix: ''           },
+  university:  { categoryName: 'University Tutors',  prefix: 'uni-'       },
+  language:    { categoryName: 'Language Tutors',    prefix: 'lang-'      },
+  test_prep:   { categoryName: 'Test Prep Tutors',   prefix: 'testprep-'  },
   other:       { categoryName: 'Other Tutors',       prefix: '' },
 };
 const CREATEAD_LEVEL_LABELS = {
