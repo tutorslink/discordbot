@@ -39,10 +39,10 @@ const {
 
 // Modmail purpose categories - maps purpose key to category ID
 const MODMAIL_PURPOSE_CATEGORIES = {
-  tutor_application: '1482394413723553905',
-  complaints_suggestions: '1482394415283568680',
-  customer_service: '1482394439552077868',
-  payment: '1482394437895192780'
+  tutor_application:      '1460567488634032200', // "Tutor Applications" category
+  complaints_suggestions: '1460567621186621524', // "Complaints & Suggestions" category
+  customer_service:       '1481293582634848318', // "Student Enquiries" / customer service category
+  payment:                '1481293527760633990'  // "Payment" category
 };
 
 // Single-letter codes to append to ticket numbers (number stays the same)
@@ -63,7 +63,7 @@ const MODMAIL_PURPOSE_OPTIONS = [
 export default function initModmail({ client, db, saveDB, config = {}, notifyError = null }) {
   if (!client || !db || !saveDB) throw new Error('initModmail missing args');
 
-  const MODMAIL_CATEGORY_ID = config.MODMAIL_CATEGORY_ID ?? '1482394406517477396';
+  const MODMAIL_CATEGORY_ID = config.MODMAIL_CATEGORY_ID ?? '1442945193547665529'; // "ModMail" category (production)
   const MODMAIL_TRANSCRIPTS_CHANNEL_ID = config.MODMAIL_TRANSCRIPTS_CHANNEL_ID ?? ENV_MODMAIL_TRANSCRIPTS_CHANNEL_ID;
 
   const STALE_CHANNEL_MSG = 'Your support channel no longer exists (it may have been deleted by staff). Press **Close Ticket** below to clear this ticket so you can open a new one.';
@@ -859,6 +859,11 @@ ${String(err && (err.stack || err))}`;
         
         if (decision === 'yes') {
           // Ask for ad category level first, then open createad modal
+          // NOTE: CREATEAD_LEVEL_CHANNELS is defined here but not currently used by the
+          // ad-creation flow (the selected level is forwarded directly to the createad modal
+          // via open_createad_modal). The IDs below could not be automatically mapped to
+          // production server channels from the available JSON export; verify them manually
+          // against the production guild (1360708397850431488) if this block is re-activated.
           const CREATEAD_LEVEL_CHANNELS = {
             university: '1458552573999972586',
             a_level: '1458552889130614814',
