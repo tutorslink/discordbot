@@ -124,10 +124,19 @@ async function migrateMap(label, collectionId, mapObj) {
     return;
   }
   let done = 0;
-  for (const [entityId, value] of entries) {
+  for (const [rawKey, value] of entries) {
+    // Strip Discord mention format: <@123456789> → 123456789 (document IDs
+    // cannot contain special chars like <, @, >).
+    const mentionMatch = rawKey.match(/^<@!?(\d+)>$/);
+    const entityId = mentionMatch ? mentionMatch[1] : rawKey;
+    // When the key was a mention, embed the original mention string in the
+    // stored data so the frontend can display clickable @-mentions.
+    const dataPayload = mentionMatch
+      ? { id: rawKey, ...value }
+      : value;
     await upsertDoc(collectionId, entityId, {
       entityId,
-      data: JSON.stringify(value),
+      data: JSON.stringify(dataPayload),
     });
     done++;
     progress(label, done, entries.length);
