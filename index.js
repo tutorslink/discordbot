@@ -171,6 +171,7 @@ let db = {
 let _appwriteSyncTimer = null;
 
 function scheduleAppwriteSync() {
+  console.log('[DEBUG] isConfigured:', appwriteClient.isConfigured());
   if (!appwriteClient.isConfigured()) return;
   if (_appwriteSyncTimer) clearTimeout(_appwriteSyncTimer);
   _appwriteSyncTimer = setTimeout(() => {
