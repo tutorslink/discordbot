@@ -352,11 +352,16 @@ async function main() {
       const wasCreated = await createCollection(col.id, col.name, col.permissions);
       if (wasCreated) {
         created++;
-        if (col.attrs) await col.attrs(col.id);
-        // Wait for Appwrite to finish processing the new attributes.
-        await waitForAttributes(col.id);
       } else {
         skipped++;
+      }
+      // Always ensure attributes are present regardless of whether the
+      // collection is new or already existed. The create*Attr helpers
+      // silently skip attributes that are already defined (HTTP 409), so
+      // this is safe to re-run and will pick up any schema changes.
+      if (col.attrs) {
+        await col.attrs(col.id);
+        await waitForAttributes(col.id);
       }
     } catch (e) {
       errors++;
