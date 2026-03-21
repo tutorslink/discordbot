@@ -19,6 +19,8 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 dotenv.config();
 
+import * as appwriteClient from './appwrite/appwrite-client.js';
+
 import pkg from 'discord.js';
 const {
   Client,
@@ -81,7 +83,7 @@ const {
   FIND_A_TUTOR_CHANNEL_ID,
   TUTORS_FEED_CHANNEL_ID,
   TICKET_CATEGORY_ID,
-  TRANSCRIPTS_CHANNEL_ID = '1443015615957696603',
+  TRANSCRIPTS_CHANNEL_ID = '1443735527596621934', // "transcripts" channel (production fallback; override via env var)
   TUTOR_CHAT_CHANNEL_ID,
   TUTOR_POLICIES_CHANNEL_ID,
   MODMAIL_CATEGORY_ID,
@@ -93,17 +95,20 @@ const {
   SYNC_WEBHOOK_URL
 } = process.env;
 
-for (const [name, val] of [
-  ['BOT_TOKEN', BOT_TOKEN],
-  ['GUILD_ID', GUILD_ID],
-  ['STAFF_ROLE_ID', STAFF_ROLE_ID],
-  ['FIND_A_TUTOR_CHANNEL_ID', FIND_A_TUTOR_CHANNEL_ID],
-  ['TUTORS_FEED_CHANNEL_ID', TUTORS_FEED_CHANNEL_ID],
-]) {
-  if (!val) {
-    console.error(`Missing required environment variable: ${name}. Set it in Wispbyte (or your host's env var panel) and restart.`);
-    process.exit(1);
-  }
+const REQUIRED_ENV_VARS = {
+  BOT_TOKEN,
+  GUILD_ID,
+  STAFF_ROLE_ID,
+  FIND_A_TUTOR_CHANNEL_ID,
+  TUTORS_FEED_CHANNEL_ID,
+};
+const missingVars = Object.entries(REQUIRED_ENV_VARS)
+  .filter(([, v]) => !v)
+  .map(([k]) => k);
+if (missingVars.length > 0) {
+  console.error(`Missing required environment variable(s): ${missingVars.join(', ')}`);
+  console.error('Set these in your hosting provider\'s environment variables panel (not in the startup command).');
+  process.exit(1);
 }
 
 // Normalize comma-separated STAFF_ROLE_ID once at startup
@@ -111,14 +116,20 @@ const STAFF_ROLE_IDS = STAFF_ROLE_ID.split(',').map(s => s.trim()).filter(Boolea
 
 // --- CreateAd categorisation (posts to find-a-tutor AND a subject channel) ---
 // Dynamic discovery: channels are found at runtime by category name + subject prefix.
+// categoryId fields were removed because the previous values referenced a test server
+// (guild different from 1360708397850431488). Without a categoryId, findSubjectChannel()
+// falls back to searching the guild's channel cache by categoryName, which is reliable
+// as long as the categories exist on the production server with these exact names.
+// To restore ID-based fast-path lookups, run /exportchannels on the production server
+// and add the correct IDs here.
 const CREATEAD_LEVEL_CONFIG = {
-  igcse:       { categoryName: 'IGCSE Tutors',       prefix: 'ig-' },
+  igcse:       { categoryName: 'IGCSE Tutors',       prefix: 'ig-'        },
   // 'asl-al-' is the server-defined prefix for A-Level subject channels (e.g. asl-al-maths)
-  a_level:     { categoryName: 'AS/A Level Tutors',  prefix: 'asl-al-' },
-  below_igcse: { categoryName: 'Below IGCSE Tutors', prefix: '' },
-  university:  { categoryName: 'University Tutors',  prefix: 'uni-' },
-  language:    { categoryName: 'Language Tutors',    prefix: 'lang-' },
-  test_prep:   { categoryName: 'Test Prep Tutors',   prefix: 'testprep-' },
+  a_level:     { categoryName: 'AS/A Level Tutors',  prefix: 'asl-al-'   },
+  below_igcse: { categoryName: 'Below IGCSE Tutors', prefix: ''           },
+  university:  { categoryName: 'University Tutors',  prefix: 'uni-'       },
+  language:    { categoryName: 'Language Tutors',    prefix: 'lang-'      },
+  test_prep:   { categoryName: 'Test Prep Tutors',   prefix: 'testprep-'  },
   other:       { categoryName: 'Other Tutors',       prefix: '' },
 };
 const CREATEAD_LEVEL_LABELS = {
@@ -156,8 +167,25 @@ let db = {
   _modmail_helpers: {}
 };
 
+// ---------------------------------------------------------------------------
+// Appwrite background sync (debounced to avoid flooding the API)
+// ---------------------------------------------------------------------------
+
+let _appwriteSyncTimer = null;
+
+function scheduleAppwriteSync() {
+  console.log('[DEBUG] isConfigured:', appwriteClient.isConfigured());
+  if (!appwriteClient.isConfigured()) return;
+  if (_appwriteSyncTimer) clearTimeout(_appwriteSyncTimer);
+  _appwriteSyncTimer = setTimeout(() => {
+    _appwriteSyncTimer = null;
+    appwriteClient.syncDB(db).catch(e => console.warn('[Appwrite] Background sync failed:', e.message));
+  }, 5000); // coalesce rapid saves into one sync every 5s
+}
+
 function saveDB() {
   try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch (e) { console.warn('Failed to save DB', e); }
+  scheduleAppwriteSync();
 }
 
 // Ensure labels passed to Discord input builders meet max-length requirements
@@ -256,7 +284,8 @@ function detectLevelFromSubject(subjectName) {
  *  1. prefix + bare name in the configured category        (e.g. ig-maths)
  *  2. bare name only in the configured category            (e.g. mandarin-chinese)
  *  3. Re-detect level from subject name and retry 1 & 2   (handles missing level field)
- *  4. Try every other level config                         (last resort)
+ *  4. Walk every other level config as last resort         (only when createIfMissing=false)
+ *  5. Create the channel in the correct category           (only when createIfMissing=true)
  */
 async function findSubjectChannel(guild, levelKey, subjectName, createIfMissing = false) {
   // Inner helper: search one level config for the channel
@@ -264,12 +293,15 @@ async function findSubjectChannel(guild, levelKey, subjectName, createIfMissing 
     const config = CREATEAD_LEVEL_CONFIG[key];
     if (!config) return null;
 
-    const category = guild.channels.cache.find(
-      c => c.type === ChannelType.GuildCategory &&
-           c.name.toLowerCase() === config.categoryName.toLowerCase()
-    );
+    // Prefer lookup by hard-coded category ID; fall back to name-based search
+    const category = config.categoryId
+      ? guild.channels.cache.get(config.categoryId)
+      : guild.channels.cache.find(
+          c => c.type === ChannelType.GuildCategory &&
+               c.name.toLowerCase() === config.categoryName.toLowerCase()
+        );
     if (!category) {
-      if (process.env.DEBUG_MIGRATEADS) console.debug(`[migrateads] category not found: "${config.categoryName}" for level="${key}"`);
+      if (process.env.DEBUG_MIGRATEADS) console.debug(`[migrateads] category not found: "${config.categoryName}" (id=${config.categoryId || 'n/a'}) for level="${key}"`);
       return null;
     }
 
@@ -311,8 +343,10 @@ async function findSubjectChannel(guild, levelKey, subjectName, createIfMissing 
     }
   }
 
-  // 3. Last resort: walk every remaining level config
-  if (!channel) {
+  // 3. Last resort: walk every remaining level config.
+  // Skipped when createIfMissing=true so we never post to a wrong-category channel —
+  // instead we fall through to step 4 which creates the correct channel.
+  if (!channel && !createIfMissing) {
     for (const k of Object.keys(CREATEAD_LEVEL_CONFIG)) {
       if (k === levelKey) continue;
       channel = tryLevel(k);
@@ -325,39 +359,45 @@ async function findSubjectChannel(guild, levelKey, subjectName, createIfMissing 
     const config = CREATEAD_LEVEL_CONFIG[levelKey];
     if (config) {
       try {
-        // Find or create the category
-        let category = guild.channels.cache.find(
-          c => c.type === ChannelType.GuildCategory &&
-               c.name.toLowerCase() === config.categoryName.toLowerCase()
-        );
-        if (!category) {
+        // Resolve the category: prefer the hard-coded ID, fall back to name search,
+        // and only create a new category as a last resort (for levels without an ID).
+        let category = config.categoryId
+          ? guild.channels.cache.get(config.categoryId)
+          : guild.channels.cache.find(
+              c => c.type === ChannelType.GuildCategory &&
+                   c.name.toLowerCase() === config.categoryName.toLowerCase()
+            );
+        if (!category && !config.categoryId) {
           category = await guild.channels.create({
             name: config.categoryName,
             type: ChannelType.GuildCategory,
           });
           console.log(`findSubjectChannel: created category "${config.categoryName}"`);
         }
+        if (!category) {
+          console.warn(`findSubjectChannel: category not found for level "${levelKey}" (id=${config.categoryId}), cannot create channel for subject "${subjectName}"`);
+        } else {
+          // Normalise subject name → channel name
+          const bare = subjectName
+            .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language|test\s*prep)\s+/i, '')
+            .toLowerCase()
+            .replace(/\s+/g, '-')
+            .replace(/[^a-z0-9-]/g, '')  // strip Discord-invalid chars
+            .replace(/-{2,}/g, '-')      // collapse multiple hyphens
+            .replace(/^-|-$/g, '');      // trim leading/trailing hyphens
 
-        // Normalise subject name → channel name
-        const bare = subjectName
-          .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language|test\s*prep)\s+/i, '')
-          .toLowerCase()
-          .replace(/\s+/g, '-')
-          .replace(/[^a-z0-9-]/g, '')  // strip Discord-invalid chars
-          .replace(/-{2,}/g, '-')      // collapse multiple hyphens
-          .replace(/^-|-$/g, '');      // trim leading/trailing hyphens
+          const channelName = (config.prefix + bare).substring(0, 100);
 
-        const channelName = (config.prefix + bare).substring(0, 100);
-
-        channel = await guild.channels.create({
-          name: channelName,
-          type: ChannelType.GuildText,
-          parent: category.id,
-          permissionOverwrites: [
-            { id: guild.roles.everyone, allow: [PermissionFlagsBits.ViewChannel] },
-          ],
-        });
-        console.log(`findSubjectChannel: created channel "#${channelName}" under "${config.categoryName}"`);
+          channel = await guild.channels.create({
+            name: channelName,
+            type: ChannelType.GuildText,
+            parent: category.id,
+            permissionOverwrites: [
+              { id: guild.roles.everyone, allow: [PermissionFlagsBits.ViewChannel] },
+            ],
+          });
+          console.log(`findSubjectChannel: created channel "#${channelName}" under "${config.categoryName}"`);
+        }
       } catch (e) {
         console.warn('findSubjectChannel: failed to create channel', e);
       }
@@ -422,6 +462,19 @@ if (db.reviewConfig && db.reviewConfig.delayDays && !db.reviewConfig.delaySecond
 }
 
 loadDB();
+
+// After the synchronous JSON load, try to pull fresher data from Appwrite.
+// This runs in the background so the bot starts quickly regardless.
+if (appwriteClient.isConfigured()) {
+  appwriteClient.loadDB().then(appwriteData => {
+    if (appwriteData && Object.keys(appwriteData).length > 0) {
+      Object.assign(db, appwriteData);
+      // Persist the Appwrite data to JSON (backup) without re-triggering a sync
+      try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch (e) { /* non-fatal */ }
+      console.log('[Appwrite] Loaded latest data from Appwrite.');
+    }
+  }).catch(e => console.warn('[Appwrite] Initial load failed, using data.json:', e.message));
+}
 
 // Helper: build a standardized archive embed for an ad entry
 function buildArchiveEmbed(adData, msgId, reason, archivedBy) {
@@ -997,7 +1050,15 @@ async function registerCommands() {
       options: [
         { name: 'action', description: 'add, remove, list, info, or notes', type: 3, required: true, choices: [{ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }, { name: 'list', value: 'list' }, { name: 'info', value: 'info' }, { name: 'notes', value: 'notes' }] },
         { name: 'user', description: 'Mention or select the tutor user (e.g. @username)', type: 6, required: false },
-        { name: 'subject', description: 'Subject for mapping', type: 3, required: false }
+        { name: 'subject', description: 'Subject for mapping (autocomplete shows subjects with tutors)', type: 3, required: false, autocomplete: true }
+      ],
+      default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
+    },
+    {
+      name: 'tutoredit',
+      description: "Edit a tutor's phone number or date of birth",
+      options: [
+        { name: 'user', description: 'The tutor to edit (leave blank to select from a list)', type: 6, required: false }
       ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
@@ -1084,7 +1145,16 @@ async function registerCommands() {
 }
 
 client.once('ready', async () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`Ready as ${client.user.tag}`);
+
+  // Guild presence check — helps confirm the bot is still in the server
+  try {
+    const guild = await client.guilds.fetch(GUILD_ID);
+    console.log(`Bot is in guild: ${guild.name} (${guild.id})`);
+  } catch (e) {
+    console.warn(`Bot is NOT in guild (or lacks access): ${GUILD_ID} — re-invite via Discord Developer Portal OAuth2 URL`);
+  }
+
   await registerCommands();
   try { client.user.setActivity('DM for ModMail', { type: 3 }); } catch (e) {}
 
@@ -1122,6 +1192,32 @@ client.on('interactionCreate', async (interaction) => {
         (interaction.commandName === 'startdemo' || interaction.commandName === 'authentication')) {
       return; // Let demo.js handle these
     }
+
+    // Autocomplete handler for /tutor subject option
+    if (interaction.isAutocomplete() && interaction.commandName === 'tutor') {
+      const focused = interaction.options.getFocused();
+      const action = interaction.options.getString('action');
+      const userOpt = interaction.options.getUser('user');
+      let subjects;
+      if ((action === 'remove' || action === 'list') && userOpt) {
+        // Only show subjects the selected tutor is assigned to
+        subjects = Object.entries(db.subjectTutors || {})
+          .filter(([, ids]) => ids.includes(userOpt.id))
+          .map(([s]) => s);
+      } else {
+        // Show subjects that have at least one tutor assigned
+        subjects = Object.entries(db.subjectTutors || {})
+          .filter(([, ids]) => ids.length > 0)
+          .map(([s]) => s);
+      }
+      const query = String(focused || '').toLowerCase();
+      const choices = subjects
+        .filter(s => !query || s.toLowerCase().includes(query))
+        .slice(0, 25)
+        .map(s => ({ name: s, value: s }));
+      await interaction.respond(choices).catch(() => {});
+      return;
+    }
     
     // Log all modal submits at the top level
     if (interaction.isModalSubmit()) {
@@ -1134,16 +1230,30 @@ client.on('interactionCreate', async (interaction) => {
 
       // Handle View Full Details button
       if (custom.startsWith('view_full_details|')) {
-        const subject = custom.split('|')[1];
+        // customId format:
+        //   new: view_full_details|<adCode>  (e.g. view_full_details|IG-1)
+        //   old: view_full_details|<subject> (legacy buttons before adCode migration)
+        const identifier = custom.slice('view_full_details|'.length);
         
-        // Find the ad message to get full details
+        // Find the ad: prefer lookup by adCode (new format), fall back to subject title (old format)
         let adData = null;
-        for (const [msgId, data] of Object.entries(db.createAds || {})) {
-          if (data.embed && data.embed.title === subject) {
-            adData = data;
-            break;
+        if (isAdCode(identifier)) {
+          // New format — fast lookup by adCode
+          for (const data of Object.values(db.createAds || {})) {
+            if (data.adCode === identifier) { adData = data; break; }
           }
         }
+        if (!adData) {
+          // Backward-compat: search by embed title (subject name); prefer entries with fullDetails
+          for (const data of Object.values(db.createAds || {})) {
+            if (data.embed && data.embed.title === identifier) {
+              if (!adData || (!adData.fullDetails && data.fullDetails)) adData = data;
+            }
+          }
+        }
+        
+        // Derive a display subject from whatever we found
+        const subject = (adData && adData.embed && adData.embed.title) || identifier;
         
         if (!adData || !adData.fullDetails) {
           return interaction.reply({ content: 'Could not find ad details. Please try again later.', ephemeral: true }).catch(() => {});
@@ -1161,7 +1271,16 @@ client.on('interactionCreate', async (interaction) => {
         detailsMessage += `**Class Type:** ${details.classType || 'N/A'}\n`;
         detailsMessage += `**Class Duration:** ${details.classDuration || 'N/A'}\n`;
         detailsMessage += `**Monthly Schedule:** ${details.monthlySchedule || 'N/A'}\n`;
-        detailsMessage += `**Price:** $${details.price || 'Contact for pricing'}\n`;
+        if (details.price && details.price1on1) {
+          detailsMessage += `**Price (Group):** $${details.price}\n`;
+          detailsMessage += `**Price (1-on-1):** $${details.price1on1}\n`;
+        } else if (details.price) {
+          detailsMessage += `**Price:** $${details.price}\n`;
+        } else if (details.price1on1) {
+          detailsMessage += `**Price (1-on-1):** $${details.price1on1}\n`;
+        } else {
+          detailsMessage += `**Price:** Contact for pricing\n`;
+        }
         detailsMessage += `**Timezone:** ${details.timezone || 'N/A'}\n\n`;
         
         if (details.tutorMessage) {
@@ -1310,7 +1429,7 @@ client.on('interactionCreate', async (interaction) => {
           const tutorLabel = new LabelBuilder().setLabel(clampLabel('Tutor (Optional)')).setStringSelectMenuComponent(tutorSelect);
 
           const subjectDetailsInput = new TextInputBuilder().setCustomId('ad_subject_details').setLabel(clampLabel('Subject Level & Codes')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Subject Level: \nSubject codes: ', 1000));
-          const tutorDetailsInput = new TextInputBuilder().setCustomId('ad_tutor_details').setLabel(clampLabel('Tutor Details & Pricing')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Languages: \nClass Type: \nClass Duration: \nClasses/week: \nClasses/month: \nPrice per Class (USD) for Group classes: \nTime zone:', 1000));
+          const tutorDetailsInput = new TextInputBuilder().setCustomId('ad_tutor_details').setLabel(clampLabel('Tutor Details & Pricing')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Languages: \nClass Type: \nClass Duration: \nClasses/week: \nClasses/month: \nPrice per Class (USD) for Group classes: \nPrice per Class (USD) for 1-on-1 classes: \nTime zone:', 1000));
           const optionalFieldsInput = new TextInputBuilder().setCustomId('ad_optional_fields').setLabel(clampLabel('Optional: Message, Testimonials, Payment, Color, Role')).setStyle(TextInputStyle.Paragraph).setRequired(false).setValue(clampLabel('Message from tutor:\nStudent Testimonials:\nPayment Terms: 100% upfront before classes begin\nColor: \nRole ID: ', 1000));
 
           const modal = new ModalBuilder()
@@ -1911,8 +2030,10 @@ client.on('interactionCreate', async (interaction) => {
             let subjectLevel = '';
             let subjectCodes = '';
             if (subjectDetails) {
-                const levelMatch = subjectDetails.match(/Subject Level:\s*(.+?)(?:\n|$)/i);
-                const codesMatch = subjectDetails.match(/Subject codes?:\s*(.+?)(?:\n|$)/i);
+                // Use [ \t]* (not \s*) to avoid consuming newlines, which would cause the
+                // next field's label to be captured as this field's value when the field is empty.
+                const levelMatch = subjectDetails.match(/Subject Level:[ \t]*(.+?)(?:\n|$)/i);
+                const codesMatch = subjectDetails.match(/Subject codes?:[ \t]*(.+?)(?:\n|$)/i);
                 subjectLevel = levelMatch ? levelMatch[1].trim() : '';
                 subjectCodes = codesMatch ? codesMatch[1].trim() : '';
             }
@@ -1923,15 +2044,22 @@ client.on('interactionCreate', async (interaction) => {
             let classDuration = '';
             let monthlySchedule = '';
             let price = '';
+            let price1on1 = '';
             let timezone = '';
             if (tutorDetails) {
-              const langMatch = tutorDetails.match(/Languages?:\s*(.+?)(?:\n|$)/i);
-              const typeMatch = tutorDetails.match(/Class Type:\s*(.+?)(?:\n|$)/i);
-              const durationMatch = tutorDetails.match(/Class Duration:\s*(.+?)(?:\n|$)/i);
-              const weekMatch = tutorDetails.match(/Classes(?:\/| per )week:\s*(.+?)(?:\n|$)/i);
-              const monthMatch = tutorDetails.match(/Classes(?:\/| per )month:\s*(.+?)(?:\n|$)/i);
-              const priceMatch = tutorDetails.match(/Price per Class.*?:\s*(.+?)(?:\n|$)/i);
-              const tzMatch = tutorDetails.match(/Time zone:\s*(.+?)(?:\n|$)/i);
+              // Use [ \t]* (not \s*) to avoid consuming newlines, which would cause the
+              // next field's label to be captured as this field's value when the field is empty.
+              const langMatch = tutorDetails.match(/Languages?:[ \t]*(.+?)(?:\n|$)/i);
+              const typeMatch = tutorDetails.match(/Class Type:[ \t]*(.+?)(?:\n|$)/i);
+              const durationMatch = tutorDetails.match(/Class Duration:[ \t]*(.+?)(?:\n|$)/i);
+              const weekMatch = tutorDetails.match(/Classes(?:\/| per )week:[ \t]*(.+?)(?:\n|$)/i);
+              const monthMatch = tutorDetails.match(/Classes(?:\/| per )month:[ \t]*(.+?)(?:\n|$)/i);
+              // Specific matches for group and 1-on-1 prices
+              const priceGroupMatch = tutorDetails.match(/Price per Class[^:\n]*Group[^:\n]*:[ \t]*(.+?)(?:\n|$)/i);
+              const price1on1Match = tutorDetails.match(/Price per Class[^:\n]*1[-\s–]on[-\s–]1[^:\n]*:[ \t]*(.+?)(?:\n|$)/i);
+              // Backward-compat: generic "Price per Class" for ads without the Group/1-on-1 labels
+              const priceGenericMatch = (!priceGroupMatch && !price1on1Match) ? tutorDetails.match(/Price per Class[^:\n]*:[ \t]*(.+?)(?:\n|$)/i) : null;
+              const tzMatch = tutorDetails.match(/Time zone:[ \t]*(.+?)(?:\n|$)/i);
               languages = langMatch ? langMatch[1].trim() : '';
               classType = typeMatch ? typeMatch[1].trim() : '';
               classDuration = durationMatch ? durationMatch[1].trim() : '';
@@ -1944,10 +2072,11 @@ client.on('interactionCreate', async (interaction) => {
               } else if (classesMonth) {
                 monthlySchedule = `${classesMonth} classes/month`;
               } else {
-                const scheduleMatch = tutorDetails.match(/Monthly Schedule:\s*(.+?)(?:\n|$)/i);
+                const scheduleMatch = tutorDetails.match(/Monthly Schedule:[ \t]*(.+?)(?:\n|$)/i);
                 monthlySchedule = scheduleMatch ? scheduleMatch[1].trim() : '';
               }
-              price = priceMatch ? priceMatch[1].trim() : '';
+              price = priceGroupMatch ? priceGroupMatch[1].trim() : (priceGenericMatch ? priceGenericMatch[1].trim() : '');
+              price1on1 = price1on1Match ? price1on1Match[1].trim() : '';
               timezone = tzMatch ? tzMatch[1].trim() : '';
             }
             
@@ -1959,16 +2088,18 @@ client.on('interactionCreate', async (interaction) => {
             let roleMention = null;
             
             if (optionalFields) {
+                // Use [ \t]* (not \s*) to avoid consuming newlines; the s-flag + trim() still
+                // captures multi-line content while returning empty string for unfilled fields.
                 // Parse tutor message
-                const tutorMsgMatch = optionalFields.match(/Message from tutor:\s*(.+?)(?:\n|Student|Payment|Color|Role|$)/is);
+                const tutorMsgMatch = optionalFields.match(/Message from tutor:[ \t]*(.+?)(?:\n|Student|Payment|Color|Role|$)/is);
                 if (tutorMsgMatch) tutorMessage = tutorMsgMatch[1].trim();
                 
                 // Parse testimonials
-                const testMatch = optionalFields.match(/Student Testimonials?:\s*(.+?)(?:\n|Payment|Color|Role|$)/is);
+                const testMatch = optionalFields.match(/Student Testimonials?:[ \t]*(.+?)(?:\n|Payment|Color|Role|$)/is);
                 if (testMatch) testimonials = testMatch[1].trim();
                 
                 // Parse payment terms
-                const paymentMatch = optionalFields.match(/Payment Terms?:\s*(.+?)(?:\n|Color|Role|$)/is);
+                const paymentMatch = optionalFields.match(/Payment Terms?:[ \t]*(.+?)(?:\n|Color|Role|$)/is);
                 if (paymentMatch) paymentTerms = paymentMatch[1].trim();
                 
                 // Parse color
@@ -1986,27 +2117,42 @@ client.on('interactionCreate', async (interaction) => {
                 }
             }
 
-            // Build concise message for main embed (subject shown as embed title)
+            // Build concise message for main embed (subject shown as embed title).
+            // Level is intentionally omitted here because ads are categorised into their
+            // level-specific channels; it is still shown in "View Full Details".
+            // Only include non-empty fields to avoid messy blank lines.
             let message = '';
-            message += `**Level:** ${subjectLevel}\n`;
-            message += `**Price:** $${price}\n`;
-            message += `**Timezone:** ${timezone}\n`;
-            message += `**Languages:** ${languages}\n\n`;
+            if (price && price1on1) {
+              message += `**Price (Group):** $${price}\n`;
+              message += `**Price (1-on-1):** $${price1on1}\n`;
+            } else if (price) {
+              message += `**Price:** $${price}\n`;
+            } else if (price1on1) {
+              message += `**Price (1-on-1):** $${price1on1}\n`;
+            }
+            if (timezone) message += `**Timezone:** ${timezone}\n`;
+            if (languages) message += `**Languages:** ${languages}\n`;
+            if (message) message += '\n';
             message += `Click "View Full Details" below for more information, or "Talk to Tutors!" to start a conversation.`;
 
             // Generate a unique ad code (e.g. IG-1, AL-3) for this ad
             const adCode = generateAdCode(levelKey);
 
-            // Store full details for ephemeral message
+            // Store full details for ephemeral message.
+            // Non-optional text fields default to 'NA' when empty so the View Full Details
+            // display never shows blank or corrupted values.  Price fields stay as empty
+            // strings so the conditional pricing display logic (group vs 1-on-1 vs "Contact
+            // for pricing") continues to work correctly.
             const fullDetailsMessage = {
-              subjectLevel,
-              subjectCodes,
-              languages,
-              classType,
-              classDuration,
-              monthlySchedule,
+              subjectLevel: subjectLevel || 'NA',
+              subjectCodes: subjectCodes || 'NA',
+              languages: languages || 'NA',
+              classType: classType || 'NA',
+              classDuration: classDuration || 'NA',
+              monthlySchedule: monthlySchedule || 'NA',
               price,
-              timezone,
+              price1on1,
+              timezone: timezone || 'NA',
               tutorMessage,
               testimonials,
               paymentTerms
@@ -2019,7 +2165,7 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`view_full_details|${subject}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId(`view_full_details|${adCode}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
                 new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
             );
 
@@ -2095,12 +2241,24 @@ client.on('interactionCreate', async (interaction) => {
                 }
             }
 
-            // If this createad was opened from modmail, close the originating ticket channel
+            // If this createad was opened from modmail, send a prompt for another ad instead of auto-closing
             try {
-              if (origin === 'modmail' && originChannel && db._modmail_helpers && typeof db._modmail_helpers.closeTicketByChannel === 'function') {
-                await db._modmail_helpers.closeTicketByChannel(originChannel, `${interaction.user.tag} (createad)`);
+              if (origin === 'modmail' && originChannel) {
+                const modmailCh = await client.channels.fetch(originChannel).catch(() => null);
+                if (modmailCh) {
+                  const anotherBtn = new ButtonBuilder()
+                    .setCustomId(`mm_create_ad|${originChannel}|yes`)
+                    .setLabel('✅ Create Another Ad')
+                    .setStyle(ButtonStyle.Success);
+                  const doneBtn = new ButtonBuilder()
+                    .setCustomId(`mm_close_after_ads|${originChannel}`)
+                    .setLabel('✅ Done — Close Ticket')
+                    .setStyle(ButtonStyle.Primary);
+                  const row = new ActionRowBuilder().addComponents(anotherBtn, doneBtn);
+                  await modmailCh.send({ content: 'Ad created! Would you like to create another ad, or close the ticket?', components: [row] }).catch(() => {});
+                }
               }
-            } catch (e) { console.warn('Failed to close originating modmail ticket after createad', e); }
+            } catch (e) { console.warn('Failed to send post-createad modmail prompt', e); }
 
             // Trigger sticky repost in find channel so sticky is always fresh after createad
             try {
@@ -2292,6 +2450,36 @@ client.on('interactionCreate', async (interaction) => {
         saveDB();
         
         return interaction.reply({ content: `Notes updated for tutor ${userid}.`, ephemeral: true }).catch(() => {});
+      }
+
+      // tutor_add_info_modal|USERID -> staff completing tutor add, setting optional phone/DOB
+      if (interaction.customId && interaction.customId.startsWith('tutor_add_info_modal|')) {
+        const userid = interaction.customId.split('|')[1];
+        const phone = interaction.fields.getTextInputValue('phone') || '';
+        const dob = interaction.fields.getTextInputValue('dob') || '';
+
+        db.tutorProfiles[userid] = db.tutorProfiles[userid] || { addedAt: Date.now(), students: [], reviews: [], rating: { count: 0, avg: 0 }, notes: '' };
+        if (phone) db.tutorProfiles[userid].phoneNumber = phone;
+        if (dob) db.tutorProfiles[userid].dob = dob;
+        saveDB();
+
+        const infoSaved = (phone || dob) ? ` Phone/DOB saved.` : '';
+        return interaction.reply({ content: `Tutor <@${userid}> added successfully.${infoSaved}` }).catch(() => {});
+      }
+
+      // tutor_edit_modal|USERID -> staff editing phone/DOB for an existing tutor
+      if (interaction.customId && interaction.customId.startsWith('tutor_edit_modal|')) {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit tutor info.', ephemeral: true }).catch(() => {});
+        const userid = interaction.customId.split('|')[1];
+        const phone = interaction.fields.getTextInputValue('phone') || '';
+        const dob = interaction.fields.getTextInputValue('dob') || '';
+
+        db.tutorProfiles[userid] = db.tutorProfiles[userid] || { addedAt: Date.now(), students: [], reviews: [], rating: { count: 0, avg: 0 }, notes: '' };
+        db.tutorProfiles[userid].phoneNumber = phone;
+        db.tutorProfiles[userid].dob = dob;
+        saveDB();
+
+        return interaction.reply({ content: `Updated contact info for tutor <@${userid}>.`, ephemeral: true }).catch(() => {});
       }
 
       // close_ticket_modal|CODE -> staff provided reason, plus fields were stored temporarily on ticket._closeFlowTemp
@@ -2627,6 +2815,8 @@ client.on('interactionCreate', async (interaction) => {
           const rating = profile.rating && profile.rating.count ? `${(Number(profile.rating.avg) || 0).toFixed(2)} ⭐️ (${profile.rating.count})` : '(no ratings)';
           const studentList = (profile.students && profile.students.length) ? profile.students.join(', ') : '(none)';
           const notes = profile.notes || '(no notes)';
+          const phone = profile.phoneNumber || '(not set)';
+          const dob = profile.dob || '(not set)';
           const lines = [
             `Tutor info for: ${userTag} (${userid})`,
             `Ad code(s): ${adCodesList.length ? adCodesList.join(', ') : '(none)'}`,
@@ -2635,6 +2825,8 @@ client.on('interactionCreate', async (interaction) => {
             `Subjects: ${subjects.length ? subjects.join(', ') : '(none)'}`,
             `Assigned students: ${studentList}`,
             `Rating: ${rating}`,
+            `Phone: ${phone}`,
+            `DOB: ${dob}`,
             `Notes: ${notes}`
           ];
           try {
@@ -2662,6 +2854,35 @@ client.on('interactionCreate', async (interaction) => {
             .setMaxLength(4000);
           modal.addComponents(new ActionRowBuilder().addComponents(notesInput));
           try { await interaction.showModal(modal); } catch (err) { try { notifyStaffError(err, 'tutor_select showModal notes', interaction); } catch (e) {} return interaction.reply({ content: 'Could not open notes modal, try again.', ephemeral: true }); }
+          return;
+        }
+
+        if (subAction === 'edit') {
+          const userid = String(selected);
+          db.tutorProfiles[userid] = db.tutorProfiles[userid] || { addedAt: Date.now(), students: [], reviews: [], rating: { count: 0, avg: 0 }, notes: '' };
+          const profile = db.tutorProfiles[userid];
+          const modal = new ModalBuilder()
+            .setCustomId(`tutor_edit_modal|${userid}`)
+            .setTitle('Edit Tutor Contact Info');
+          const phoneInput = new TextInputBuilder()
+            .setCustomId('phone')
+            .setLabel('Phone Number')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(false)
+            .setValue((profile.phoneNumber || '').substring(0, 100))
+            .setPlaceholder('e.g. +1 234 567 890');
+          const dobInput = new TextInputBuilder()
+            .setCustomId('dob')
+            .setLabel('Date of Birth')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(false)
+            .setValue((profile.dob || '').substring(0, 100))
+            .setPlaceholder('e.g. YYYY-MM-DD');
+          modal.addComponents(
+            new ActionRowBuilder().addComponents(phoneInput),
+            new ActionRowBuilder().addComponents(dobInput)
+          );
+          try { await interaction.showModal(modal); } catch (err) { try { notifyStaffError(err, 'tutor_select showModal edit', interaction); } catch (e) {} return interaction.reply({ content: 'Could not open edit modal, try again.', ephemeral: true }).catch(() => {}); }
           return;
         }
 
@@ -2704,25 +2925,26 @@ client.on('interactionCreate', async (interaction) => {
             db.subjectTutors[subj] = db.subjectTutors[subj] || [];
             if (!db.subjectTutors[subj].includes(userid)) db.subjectTutors[subj].push(userid);
             db.tutorProfiles[userid] = db.tutorProfiles[userid] || { addedAt: Date.now(), students: [], reviews: [], rating: { count:0, avg:0 }, notes: '' };
-            saveDB();
-            // Acknowledge interaction immediately to prevent expiration
-            try {
-              await interaction.deferUpdate();
-            } catch (e) {
-              try {
-                await interaction.update({ content: `Processing...`, components: [] });
-              } catch (err) {
-                return;
-              }
-            }
-            try { await grantTutorAccess(userid); } catch (e) { try { notifyStaffError(e, 'tutor_add_select grantTutorAccess', interaction); } catch (err) {} }
             delete db._tempTutorAdd[key];
-            const tutorUser = await client.users.fetch(userid).catch(() => null);
-            const tutorDisplay = tutorUser ? `**${tutorUser.username}** (<@${userid}>)` : `<@${userid}>`;
+            saveDB();
+            // Start grantTutorAccess in background before showing modal
+            (async () => { try { await grantTutorAccess(userid); } catch (e) { try { notifyStaffError(e, 'tutor_add_select grantTutorAccess', interaction); } catch (err) {} } })();
+            // Show phone/DOB modal as the response
+            const profile = db.tutorProfiles[userid];
+            const modal = new ModalBuilder()
+              .setCustomId(`tutor_add_info_modal|${userid}`)
+              .setTitle('New Tutor — Contact Info (Optional)');
+            const phoneInput = new TextInputBuilder()
+              .setCustomId('phone').setLabel('Phone Number').setStyle(TextInputStyle.Short)
+              .setRequired(false).setValue((profile.phoneNumber || '').substring(0, 100)).setPlaceholder('e.g. +1 234 567 890');
+            const dobInput = new TextInputBuilder()
+              .setCustomId('dob').setLabel('Date of Birth').setStyle(TextInputStyle.Short)
+              .setRequired(false).setValue((profile.dob || '').substring(0, 100)).setPlaceholder('e.g. YYYY-MM-DD');
+            modal.addComponents(new ActionRowBuilder().addComponents(phoneInput), new ActionRowBuilder().addComponents(dobInput));
             try {
-              await interaction.editReply({ content: `Added tutor ${tutorDisplay} to **${subj}**, access grant started.`, components: [] });
-            } catch (e) {
-              try { await interaction.followUp({ content: `Added tutor ${tutorDisplay} to **${subj}**, access grant started.` }); } catch (err) { console.warn('tutor_add_select subject reply failed', err); }
+              await interaction.showModal(modal);
+            } catch (err) {
+              try { await interaction.update({ content: `Added tutor <@${userid}> to **${subj}**, access grant started.`, components: [] }); } catch (e) { try { await interaction.reply({ content: `Added tutor <@${userid}> to **${subj}**, access grant started.`, ephemeral: true }); } catch (err2) { console.warn('tutor_add_select subject reply failed', err2); } }
             }
             return;
           }
@@ -2745,24 +2967,26 @@ client.on('interactionCreate', async (interaction) => {
             db.subjectTutors[subj] = db.subjectTutors[subj] || [];
             if (!db.subjectTutors[subj].includes(userid)) db.subjectTutors[subj].push(userid);
             db.tutorProfiles[userid] = db.tutorProfiles[userid] || { addedAt: Date.now(), students: [], reviews: [], rating: { count:0, avg:0 }, notes: '' };
-            saveDB();
-            try {
-              await interaction.deferUpdate();
-            } catch (e) {
-              try {
-                await interaction.update({ content: `Processing...`, components: [] });
-              } catch (err) {
-                return;
-              }
-            }
-            try { await grantTutorAccess(userid); } catch (e) { try { notifyStaffError(e, 'tutor_add_select grantTutorAccess', interaction); } catch (err) {} }
             delete db._tempTutorAdd[key];
-            const tutorUser = await client.users.fetch(userid).catch(() => null);
-            const tutorDisplay = tutorUser ? `**${tutorUser.username}** (<@${userid}>)` : `<@${userid}>`;
+            saveDB();
+            // Start grantTutorAccess in background before showing modal
+            (async () => { try { await grantTutorAccess(userid); } catch (e) { try { notifyStaffError(e, 'tutor_add_select grantTutorAccess', interaction); } catch (err) {} } })();
+            // Show phone/DOB modal as the response
+            const profile = db.tutorProfiles[userid];
+            const modal = new ModalBuilder()
+              .setCustomId(`tutor_add_info_modal|${userid}`)
+              .setTitle('New Tutor — Contact Info (Optional)');
+            const phoneInput = new TextInputBuilder()
+              .setCustomId('phone').setLabel('Phone Number').setStyle(TextInputStyle.Short)
+              .setRequired(false).setValue((profile.phoneNumber || '').substring(0, 100)).setPlaceholder('e.g. +1 234 567 890');
+            const dobInput = new TextInputBuilder()
+              .setCustomId('dob').setLabel('Date of Birth').setStyle(TextInputStyle.Short)
+              .setRequired(false).setValue((profile.dob || '').substring(0, 100)).setPlaceholder('e.g. YYYY-MM-DD');
+            modal.addComponents(new ActionRowBuilder().addComponents(phoneInput), new ActionRowBuilder().addComponents(dobInput));
             try {
-              await interaction.editReply({ content: `Added tutor ${tutorDisplay} to **${subj}**, access grant started.`, components: [] });
-            } catch (e) {
-              try { await interaction.followUp({ content: `Added tutor ${tutorDisplay} to **${subj}**, access grant started.` }); } catch (err) { console.warn('tutor_add_select tutor reply failed', err); }
+              await interaction.showModal(modal);
+            } catch (err) {
+              try { await interaction.update({ content: `Added tutor <@${userid}> to **${subj}**, access grant started.`, components: [] }); } catch (e) { try { await interaction.reply({ content: `Added tutor <@${userid}> to **${subj}**, access grant started.`, ephemeral: true }); } catch (err2) { console.warn('tutor_add_select tutor reply failed', err2); } }
             }
             return;
           }
@@ -2936,9 +3160,9 @@ client.on('interactionCreate', async (interaction) => {
     
     if (tutorSubjects.length > 0) {
       const filteredSubjOptions = tutorSubjects.slice(0, 24).map(s => ({ 
-        label: s, 
-        value: s,
-        description: `Subject: ${s}` 
+        label: s.substring(0, 100), 
+        value: s.substring(0, 100),
+        description: `Subject: ${s}`.substring(0, 100)
       }));
       
       // Only include "Use ticket subject" if tutor teaches it
@@ -3173,11 +3397,13 @@ if (cmd === 'close') {
         }
       }
     } catch (e) {}
-    tutorOptions.push({ 
-      label: label.substring(0, 100), 
+    // description must be a non-empty string or omitted — never pass ''
+    const tutorOpt = { 
+      label: (label || `User ${tid}`).substring(0, 100), 
       value: String(tid).substring(0, 100),
-      description: description.substring(0, 50) 
-    });
+    };
+    if (description) tutorOpt.description = description.substring(0, 50);
+    tutorOptions.push(tutorOpt);
   }
   
   const tutorSelect = new StringSelectMenuBuilder()
@@ -3186,10 +3412,10 @@ if (cmd === 'close') {
     .addOptions(tutorOptions);
 
   // Subject select - will be updated dynamically when tutor is chosen
-  const subjOptions = db.subjects.slice(0, 24).map(s => ({ 
-    label: s, 
-    value: s,
-    description: `Subject: ${s}` 
+  const subjOptions = (db.subjects || []).slice(0, 24).map(s => ({ 
+    label: s.substring(0, 100), 
+    value: s.substring(0, 100),
+    description: `Subject: ${s}`.substring(0, 100)
   }));
   
   const subjectSelect = new StringSelectMenuBuilder()
@@ -3300,7 +3526,9 @@ if (cmd === 'close') {
               // Show ad code(s) for this tutor if available
               const tutorAdCodes = Object.values(db.createAds || {}).filter(a => a.tutorId === tid && a.adCode).map(a => a.adCode);
               if (tutorAdCodes.length) desc = `${tutorAdCodes.join(', ')}${desc ? ' · ' + desc : ''}`;
-              options.push({ label: label.substring(0,100), value: String(tid).substring(0,100), description: desc.substring(0,50) });
+              const infoOpt = { label: (label || `User ${tid}`).substring(0,100), value: String(tid).substring(0,100) };
+              if (desc) infoOpt.description = desc.substring(0,50);
+              options.push(infoOpt);
             }
             const select = new StringSelectMenuBuilder().setCustomId('tutor_select|info').setPlaceholder('Select a tutor to view info').addOptions(options);
             return interaction.reply({ content: 'Select a tutor to view info:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
@@ -3332,6 +3560,8 @@ if (cmd === 'close') {
           const rating = profile.rating && profile.rating.count ? `${(Number(profile.rating.avg) || 0).toFixed(2)} ⭐️ (${profile.rating.count})` : '(no ratings)';
           const studentList = (profile.students && profile.students.length) ? profile.students.join(', ') : '(none)';
           const notes = profile.notes || '(no notes)';
+          const phone = profile.phoneNumber || '(not set)';
+          const dob = profile.dob || '(not set)';
           const nameDisplay = displayName ? `**${displayName}** (<@${userid}> · \`${userTag}\`)` : `<@${userid}> · \`${userTag}\``;
           const lines = [
             `Tutor info for: ${nameDisplay} — ID: \`${userid}\``,
@@ -3341,6 +3571,8 @@ if (cmd === 'close') {
             `Subjects: ${subjects.length ? subjects.join(', ') : '(none)'}`,
             `Assigned students: ${studentList}`,
             `Rating: ${rating}`,
+            `Phone: ${phone}`,
+            `DOB: ${dob}`,
             `Notes: ${notes}`
           ];
           return interaction.reply({ content: lines.join('\n') }).catch(() => {});
@@ -3361,7 +3593,9 @@ if (cmd === 'close') {
                 if (m) { label = m.user.username; desc = `(${m.user.tag})`; }
                 else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } }
               } catch (e) {}
-              options.push({ label: label.substring(0,100), value: String(tid).substring(0,100), description: desc.substring(0,50) });
+              const notesOpt = { label: (label || `User ${tid}`).substring(0,100), value: String(tid).substring(0,100) };
+              if (desc) notesOpt.description = desc.substring(0,50);
+              options.push(notesOpt);
             }
             const select = new StringSelectMenuBuilder().setCustomId('tutor_select|notes').setPlaceholder('Select a tutor to edit notes').addOptions(options);
             return interaction.reply({ content: 'Select a tutor to edit notes:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
@@ -3414,24 +3648,28 @@ if (cmd === 'close') {
             return interaction.reply({ content: `Tutors for ${subj}:\n${lines.join('\n')}`, ephemeral: true }).catch(() => {});
           } else {
             const lines = [];
-            for (const s of db.subjects) {
-              const ids = db.subjectTutors[s] || [];
-              if (ids.length === 0) lines.push(`${s}: (none)`);
-              else {
-                const formatted = [];
-                for (const id of ids) {
-                  let label = id;
-                  try {
-                    const m = await interaction.guild.members.fetch(id).catch(() => null);
-                    if (m) label = `${m.user.username} (${id})`;
-                    else { const u = await client.users.fetch(id).catch(() => null); if (u) label = `${u.username} (${id})`; }
-                  } catch (e) {}
-                  formatted.push(label);
-                }
-                lines.push(`${s}: ${formatted.join(', ')}`);
+            for (const s of (db.subjects || [])) {
+              const ids = (db.subjectTutors || {})[s] || [];
+              if (ids.length === 0) continue; // skip subjects with no tutors
+              const formatted = [];
+              for (const id of ids) {
+                let label = id;
+                try {
+                  const m = await interaction.guild.members.fetch(id).catch(() => null);
+                  if (m) label = `${m.user.username} (${id})`;
+                  else { const u = await client.users.fetch(id).catch(() => null); if (u) label = `${u.username} (${id})`; }
+                } catch (e) {}
+                formatted.push(label);
               }
+              lines.push(`${s}: ${formatted.join(', ')}`);
             }
-            return interaction.reply({ content: lines.join('\n'), ephemeral: true }).catch(() => {});
+            if (lines.length === 0) return interaction.reply({ content: 'No subjects with assigned tutors found.', ephemeral: true }).catch(() => {});
+            const chunks = splitMessage(lines.join('\n'), 1900);
+            await interaction.reply({ content: chunks[0], ephemeral: true }).catch(() => {});
+            for (let i = 1; i < chunks.length; i++) {
+              await interaction.followUp({ content: chunks[i], ephemeral: true }).catch(() => {});
+            }
+            return;
           }
         }
 
@@ -3456,7 +3694,9 @@ if (cmd === 'close') {
               let label = `User ID: ${tid}`;
               let desc = '';
               try { const m = await interaction.guild.members.fetch(tid).catch(() => null); if (m) { label = m.user.username; desc = `(${m.user.tag})`; } else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } } } catch (e) {}
-              tutorOptions.push({ label: label.substring(0,100), value: String(tid).substring(0,100), description: desc.substring(0,50) });
+              const rmTutorOpt = { label: (label || `User ${tid}`).substring(0,100), value: String(tid).substring(0,100) };
+              if (desc) rmTutorOpt.description = desc.substring(0,50);
+              tutorOptions.push(rmTutorOpt);
             }
             if (tutorOptions.length) {
               const tutorSelect = new StringSelectMenuBuilder().setCustomId('tutor_remove_select|tutor').setPlaceholder('Select tutor to remove').addOptions(tutorOptions);
@@ -3475,7 +3715,9 @@ if (cmd === 'close') {
             let label = `User ID: ${tid}`;
             let desc = '';
             try { const m = await interaction.guild.members.fetch(tid).catch(() => null); if (m) { label = m.user.username; desc = `(${m.user.tag})`; } else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } } } catch (e) {}
-            options.push({ label: label.substring(0,100), value: String(tid).substring(0,100), description: desc.substring(0,50) });
+            const rmOpt = { label: (label || `User ${tid}`).substring(0,100), value: String(tid).substring(0,100) };
+            if (desc) rmOpt.description = desc.substring(0,50);
+            options.push(rmOpt);
           }
           const select = new StringSelectMenuBuilder().setCustomId(`tutor_remove_select|tutor|${subj}`).setPlaceholder('Select tutor to remove from subject').addOptions(options);
           return interaction.reply({ content: `Select a tutor to remove from ${subj}:`, components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
@@ -3483,6 +3725,32 @@ if (cmd === 'close') {
 
         if (!isStaff(interaction.member)) {
           return interaction.reply({ content: 'Only staff can manage tutors.', ephemeral: true }).catch(() => {});
+        }
+
+        // When /tutor remove user:@X is used without a subject: show only that tutor's subjects
+        if (action === 'remove' && useridRaw && !subj) {
+          const userid = String(useridRaw);
+          const tutorSubjects = Object.entries(db.subjectTutors || {})
+            .filter(([, ids]) => ids.includes(userid))
+            .map(([s]) => s);
+          if (tutorSubjects.length === 0) {
+            return interaction.reply({ content: `<@${userid}> is not assigned to any subjects.`, ephemeral: true }).catch(() => {});
+          }
+          // Store the userid in _tempTutorRemove so the select handler can complete the removal
+          db._tempTutorRemove = db._tempTutorRemove || {};
+          const key = interaction.user.id;
+          db._tempTutorRemove[key] = { subject: null, userid };
+          saveDB();
+          const subjectOpts = tutorSubjects.slice(0, 25).map(s => ({ label: s.substring(0, 100), value: s.substring(0, 100) }));
+          const subjectSelect = new StringSelectMenuBuilder()
+            .setCustomId('tutor_remove_select|subject')
+            .setPlaceholder('Select subject to remove tutor from')
+            .addOptions(subjectOpts);
+          return interaction.reply({
+            content: `Select the subject to remove <@${userid}> from:`,
+            components: [new ActionRowBuilder().addComponents(subjectSelect)],
+            ephemeral: true
+          }).catch(() => {});
         }
 
         // If add/remove called without both userid and subject, present selection UI
@@ -3536,7 +3804,9 @@ if (cmd === 'close') {
               let label = `User ID: ${tid}`;
               let desc = '';
               try { const mm = await interaction.guild.members.fetch(tid).catch(() => null); if (mm) { label = mm.user.username; desc = `(${mm.user.tag})`; } else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } } } catch (e) {}
-              options.push({ label: label.substring(0,100), value: String(tid).substring(0,100), description: desc.substring(0,50) });
+              const rmKnownOpt = { label: (label || `User ${tid}`).substring(0,100), value: String(tid).substring(0,100) };
+              if (desc) rmKnownOpt.description = desc.substring(0,50);
+              options.push(rmKnownOpt);
             }
             if (options.length) {
               const tutorSelect = new StringSelectMenuBuilder().setCustomId('tutor_remove_select|tutor').setPlaceholder('Select tutor to remove').addOptions(options);
@@ -3561,12 +3831,7 @@ if (cmd === 'close') {
           db.tutorProfiles[userid] = db.tutorProfiles[userid] || { addedAt: Date.now(), students: [], reviews: [], rating: { count:0, avg:0 }, notes: '' };
           saveDB();
 
-          try {
-            await interaction.reply({ content: `Added tutor ${tutorMentionFmt} to **${subj}**, access grant started.` });
-          } catch (err) {
-            try { await interaction.followUp({ content: `Added tutor ${tutorMentionFmt} to **${subj}**, access grant started.` }); } catch {}
-          }
-
+          // Start grantTutorAccess in background before showing modal
           (async () => {
             try {
               await grantTutorAccess(userid);
@@ -3576,6 +3841,25 @@ if (cmd === 'close') {
               try { notifyStaffError(e, 'grantTutorAccess async', interaction); } catch (err) {}
             }
           })();
+
+          // Show phone/DOB modal as the response to the slash command
+          const profile = db.tutorProfiles[userid];
+          const addModal = new ModalBuilder()
+            .setCustomId(`tutor_add_info_modal|${userid}`)
+            .setTitle('New Tutor — Contact Info (Optional)');
+          const phoneInput = new TextInputBuilder()
+            .setCustomId('phone').setLabel('Phone Number').setStyle(TextInputStyle.Short)
+            .setRequired(false).setValue((profile.phoneNumber || '').substring(0, 100)).setPlaceholder('e.g. +1 234 567 890');
+          const dobInput = new TextInputBuilder()
+            .setCustomId('dob').setLabel('Date of Birth').setStyle(TextInputStyle.Short)
+            .setRequired(false).setValue((profile.dob || '').substring(0, 100)).setPlaceholder('e.g. YYYY-MM-DD');
+          addModal.addComponents(new ActionRowBuilder().addComponents(phoneInput), new ActionRowBuilder().addComponents(dobInput));
+          try {
+            await interaction.showModal(addModal);
+          } catch (err) {
+            console.error('showModal failed for tutor add info', err);
+            try { await interaction.reply({ content: `Added tutor ${tutorMentionFmt} to **${subj}**, access grant started.` }); } catch (e) { try { await interaction.followUp({ content: `Added tutor ${tutorMentionFmt} to **${subj}**, access grant started.` }); } catch {} }
+          }
           return;
         }
 
@@ -3593,7 +3877,57 @@ if (cmd === 'close') {
         return interaction.reply({ content: 'Unknown action for tutor.', ephemeral: true }).catch(() => {});
       }
 
-// Replace the current /createad command handler (around line 920-950) with:
+      if (cmd === 'tutoredit') {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit tutor info.', ephemeral: true }).catch(() => {});
+        const userOpt = interaction.options.getUser('user', false);
+        const useridRaw = userOpt ? userOpt.id : null;
+
+        db.tutorProfiles = db.tutorProfiles || {};
+
+        if (!useridRaw) {
+          // Show a select menu to pick a tutor
+          const allTutorIds = Array.from(new Set(Object.values(db.subjectTutors || {}).flat()));
+          if (allTutorIds.length === 0) return interaction.reply({ content: 'No tutors in database.', ephemeral: true }).catch(() => {});
+          const options = [];
+          for (const tid of allTutorIds.slice(0, 25)) {
+            let label = `User ID: ${tid}`;
+            let desc = '';
+            try {
+              const m = await interaction.guild.members.fetch(tid).catch(() => null);
+              if (m) { label = m.user.username; desc = `(${m.user.tag})`; }
+              else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } }
+            } catch (e) {}
+            const opt = { label: (label || `User ${tid}`).substring(0, 100), value: String(tid).substring(0, 100) };
+            if (desc) opt.description = desc.substring(0, 50);
+            options.push(opt);
+          }
+          const select = new StringSelectMenuBuilder().setCustomId('tutor_select|edit').setPlaceholder('Select a tutor to edit contact info').addOptions(options);
+          return interaction.reply({ content: 'Select a tutor to edit their phone number and date of birth:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
+        }
+
+        const userid = String(useridRaw);
+        db.tutorProfiles[userid] = db.tutorProfiles[userid] || { addedAt: Date.now(), students: [], reviews: [], rating: { count: 0, avg: 0 }, notes: '' };
+        const profile = db.tutorProfiles[userid];
+        const modal = new ModalBuilder()
+          .setCustomId(`tutor_edit_modal|${userid}`)
+          .setTitle('Edit Tutor Contact Info');
+        const phoneInput = new TextInputBuilder()
+          .setCustomId('phone').setLabel('Phone Number').setStyle(TextInputStyle.Short)
+          .setRequired(false).setValue((profile.phoneNumber || '').substring(0, 100)).setPlaceholder('e.g. +1 234 567 890');
+        const dobInput = new TextInputBuilder()
+          .setCustomId('dob').setLabel('Date of Birth').setStyle(TextInputStyle.Short)
+          .setRequired(false).setValue((profile.dob || '').substring(0, 100)).setPlaceholder('e.g. YYYY-MM-DD');
+        modal.addComponents(new ActionRowBuilder().addComponents(phoneInput), new ActionRowBuilder().addComponents(dobInput));
+        try {
+          await interaction.showModal(modal);
+        } catch (err) {
+          console.error('showModal failed for tutoredit', err);
+          return interaction.reply({ content: 'Could not open edit modal, try again.', ephemeral: true }).catch(() => {});
+        }
+        return;
+      }
+
+
 if (cmd === 'createad') {
     if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can create ads.', ephemeral: true }).catch(() => {});
 
@@ -4126,7 +4460,6 @@ if (cmd === 'createad') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can run ad migration.', ephemeral: true }).catch(() => {});
         const force = interaction.options.getBoolean('force') || false;
 
-        const MIGRATE_MAX_DESCRIPTION_LINES = 4;
         const MIGRATE_RATE_LIMIT_DELAY_MS = 1000;
 
         await interaction.deferReply({ ephemeral: true }).catch(() => {});
@@ -4157,8 +4490,6 @@ if (cmd === 'createad') {
             // ads created before the level field was introduced still get routed
             // to the correct category (e.g. "IGCSE Maths" → igcse, not "other").
             const levelKey = adData.level || detectLevelFromSubject(subject) || 'other';
-            const tutorId = adData.tutorId || null;
-            const embedDescription = adData.embed && adData.embed.description ? adData.embed.description : '';
 
             if (!subject) { skipped++; continue; }
 
@@ -4169,14 +4500,36 @@ if (cmd === 'createad') {
               continue;
             }
 
-            const shortContent = [
-              `**${subject}**`,
-              tutorId ? `Tutor: <@${tutorId}>` : null,
-              embedDescription ? embedDescription.split('\n').slice(0, MIGRATE_MAX_DESCRIPTION_LINES).join('\n') : null,
-              FIND_A_TUTOR_CHANNEL_ID ? `*See full ad in <#${FIND_A_TUTOR_CHANNEL_ID}>*` : null
-            ].filter(Boolean).join('\n');
+            // Build structured embed description from fullDetails
+            const details = adData.fullDetails || {};
+            const adCode = adData.adCode || null;
+            let migrateDesc = '';
+            if (adCode) migrateDesc += `**Tutor Code:** ${adCode}\n`;
+            if (details.subjectCodes) migrateDesc += `**Subject Codes:** ${details.subjectCodes}\n`;
+            if (details.languages) migrateDesc += `**Languages:** ${details.languages}\n`;
+            if (details.price && details.price1on1) {
+              migrateDesc += `**Price (Group):** $${details.price}\n`;
+              migrateDesc += `**Price (1-on-1):** $${details.price1on1}\n`;
+            } else if (details.price) {
+              migrateDesc += `**Price:** $${details.price}\n`;
+            } else if (details.price1on1) {
+              migrateDesc += `**Price (1-on-1):** $${details.price1on1}\n`;
+            }
+            migrateDesc += `\nClick **View Full Details** below for more information.\n`;
+            migrateDesc += `📩 DM <@${client.user.id}> when you're ready to pay!`;
 
-            const sent = await categoryCh.send({ content: shortContent }).catch(() => null);
+            const migrateEmbed = new EmbedBuilder().setTitle(subject).setDescription(migrateDesc);
+            if (adData.embed && adData.embed.color) {
+              try { migrateEmbed.setColor(adData.embed.color); } catch (e) {}
+            }
+
+            const migrateRow = new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId(`view_full_details|${adData.adCode || subject}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
+              new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
+            );
+
+            // Do NOT ping tutors — tutor identities are kept secret
+            const sent = await categoryCh.send({ embeds: [migrateEmbed], components: [migrateRow] }).catch(() => null);
             if (sent) {
               db.createAds[messageId].categoryChannelId = categoryCh.id;
               db.createAds[messageId].categoryMessageId = sent.id;
@@ -4380,6 +4733,8 @@ client.on('messageCreate', async (message) => {
 
             const content = `Please do not type anything else until staff approves your message, as the tutors will only be able to see your first message.`;
             await message.channel.send({ content, components: [row] }).catch(() => {});
+            // React ✅ so the student knows the message was received
+            message.react('✅').catch(() => {});
             return;
           }
 
@@ -4389,25 +4744,30 @@ client.on('messageCreate', async (message) => {
             echo += message.content && message.content.trim().length ? `> ${message.content}` : '> (no text)';
             if (attachments.length) echo += `\n\nAttachment(s): ${attachments.join(' ')}`;
             await message.channel.send({ content: echo }).catch(() => {});
+            message.react('✅').catch(() => {});
           } catch (e) {
+            message.react('❌').catch(() => {});
             console.warn('failed to echo student follow-up', e);
             try { notifyStaffError(e, 'messageCreate echo follow-up', message); } catch (err) {}
           }
         } else {
           // approved flow forwards to tutors thread
+          let forwarded = false;
           if (ticket.tutorThreadId) {
             try {
               const thread = await message.guild.channels.fetch(ticket.tutorThreadId).catch(() => null);
               if (thread && thread.isThread()) {
                 let content = `Student ${code} says: ${message.content || ''}`;
                 if (attachments.length) content += `\nAttachment(s): ${attachments.join(' ')}`;
-                await thread.send({ content }).catch(() => {});
+                await thread.send({ content });
+                forwarded = true;
               }
             } catch (e) {
               console.warn('forward fail', e);
               try { notifyStaffError(e, 'messageCreate forward to tutors thread', message); } catch (err) {}
             }
           }
+          message.react(forwarded ? '✅' : '❌').catch(() => {});
         }
       } else {
         // staff or other wrote in ticket
@@ -4442,6 +4802,7 @@ client.on('messageCreate', async (message) => {
               const files = [...message.attachments.values()].map(a => a.url);
               // Skip forwarding if there is nothing to send (no text and no attachments)
               if (!text && !files.length) return;
+              let forwarded = false;
               try {
                 const guild = message.guild;
                 const ticketChannel = await guild.channels.fetch(ticket.ticketChannelId).catch(() => null);
@@ -4456,15 +4817,17 @@ client.on('messageCreate', async (message) => {
                   }
                   const tutorLabel = `Tutor ${ticket.tutorMap[userIdStr]}`;
                   const forwardContent = text ? `Reply from ${tutorLabel}: ${text}` : `Reply from ${tutorLabel}:`;
-                  await ticketChannel.send({ content: forwardContent, ...(files.length ? { files } : {}) }).catch(() => {});
+                  await ticketChannel.send({ content: forwardContent, ...(files.length ? { files } : {}) });
                   ticket.messages = ticket.messages || [];
                   ticket.messages.push({ who: tutorLabel, tutorId: userIdStr, at: Date.now(), text });
                   saveDB();
+                  forwarded = true;
                 }
               } catch (e) {
                 console.warn('Failed to forward tutor message to student', e);
                 try { notifyStaffError(e, 'messageCreate bridge forward to student', message); } catch (err) {}
               }
+              message.react(forwarded ? '✅' : '❌').catch(() => {});
             } else {
               // = prefix — internal note, post a brief auto-deleting acknowledgment
               try {
@@ -4628,6 +4991,51 @@ setInterval(async () => {
       }
     }
   } catch (e) { console.warn('review reminder worker error', e); }
+}, 60 * 1000); // runs every minute
+
+// Ticket inactivity worker: auto-close tickets where the student has sent no message within 24 hours
+setInterval(async () => {
+  try {
+    const now = Date.now();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    for (const [code, ticket] of Object.entries(db.tickets || {})) {
+      try {
+        if (!ticket || !ticket.createdAt) continue;
+        // ticket.messages uses who === 'Student' (hardcoded string) for the regular ticket system.
+        // The modmail system uses who = "User " followed by user tag or ID — intentionally different.
+        const hasStudentMessage = (ticket.messages || []).some(m => m.who === 'Student');
+        if (hasStudentMessage) continue;
+        // Act only after 24 hours have elapsed
+        if (now - ticket.createdAt < TWENTY_FOUR_HOURS) continue;
+        // DM the student
+        try {
+          const student = await client.users.fetch(ticket.studentId).catch(() => null);
+          if (student) {
+            await student.send(
+              `Your tutor enquiry ticket (code: **${code}**, subject: **${ticket.subject || 'N/A'}**) has been automatically deleted because no message was received from you within 24 hours of opening it.\n\nIf you still need help, you are welcome to create a new ticket.`
+            ).catch(() => {});
+          }
+        } catch (e) { console.warn(`ticket inactivity: could not DM student for ${code}`, e); }
+        // Delete the channel
+        try {
+          const ch = await client.channels.fetch(ticket.ticketChannelId).catch(() => null);
+          if (ch) {
+            await ch.send('This ticket has been automatically closed due to inactivity (no message received within 24 hours).').catch(() => {});
+            await ch.delete('Auto-closed: no student message within 24 hours').catch(async (err) => {
+              console.warn(`ticket inactivity: channel delete failed for ${code}`, err);
+              try { await ch.permissionOverwrites.edit(ticket.studentId, { ViewChannel: false, SendMessages: false }).catch(() => {}); } catch (ee) {}
+            });
+          }
+        } catch (e) { console.warn(`ticket inactivity: channel cleanup failed for ${code}`, e); }
+        // Remove from db
+        delete db.tickets[code];
+        saveDB();
+      } catch (e) {
+        console.warn(`ticket inactivity worker: error for ticket ${code}`, e);
+        try { notifyStaffError(e, `ticket inactivity worker ${code}`); } catch (err) {}
+      }
+    }
+  } catch (e) { console.warn('ticket inactivity worker error', e); }
 }, 60 * 1000); // runs every minute
 
 client.login(BOT_TOKEN).catch(err => {

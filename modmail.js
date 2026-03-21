@@ -39,10 +39,10 @@ const {
 
 // Modmail purpose categories - maps purpose key to category ID
 const MODMAIL_PURPOSE_CATEGORIES = {
-  tutor_application: '1460567488634032200',
-  complaints_suggestions: '1460567621186621524',
-  customer_service: '1481293582634848318',
-  payment: '1481293527760633990'
+  tutor_application:      '1460567488634032200', // "Tutor Applications" category
+  complaints_suggestions: '1460567621186621524', // "Complaints & Suggestions" category
+  customer_service:       '1481293582634848318', // "Student Enquiries" / customer service category
+  payment:                '1481293527760633990'  // "Payment" category
 };
 
 // Single-letter codes to append to ticket numbers (number stays the same)
@@ -63,7 +63,7 @@ const MODMAIL_PURPOSE_OPTIONS = [
 export default function initModmail({ client, db, saveDB, config = {}, notifyError = null }) {
   if (!client || !db || !saveDB) throw new Error('initModmail missing args');
 
-  const MODMAIL_CATEGORY_ID = config.MODMAIL_CATEGORY_ID ?? '1443291406612561983';
+  const MODMAIL_CATEGORY_ID = config.MODMAIL_CATEGORY_ID ?? '1442945193547665529'; // "ModMail" category (production)
   const MODMAIL_TRANSCRIPTS_CHANNEL_ID = config.MODMAIL_TRANSCRIPTS_CHANNEL_ID ?? ENV_MODMAIL_TRANSCRIPTS_CHANNEL_ID;
 
   const STALE_CHANNEL_MSG = 'Your support channel no longer exists (it may have been deleted by staff). Press **Close Ticket** below to clear this ticket so you can open a new one.';
@@ -353,14 +353,16 @@ ${String(err && (err.stack || err))}`;
     } catch (e) { console.warn('postTranscript failed', e); await notifyStaff(e, { module: 'modmail.postTranscript', userId: ticket?.userId }); }
   }
 
-  // Close ticket helper used by modal and message-based flows
-  async function closeTicket(ticket, closedByText) {
+  // Close ticket helper used by modal and message-based flows.
+  // customDmMsg overrides the default "closed by staff" DM (used for auto-close situations).
+  async function closeTicket(ticket, closedByText, customDmMsg = null) {
     try {
       if (!ticket) return;
       await postTranscript(ticket, closedByText);
       try {
         const u = await client.users.fetch(ticket.userId).catch(() => null);
-        if (u) await u.send(`Your staff conversation (Ticket ${ticket.shortId || ('#'+ticket.id)}) has been closed by staff. Transcript saved.`).catch(() => {});
+        const dmMsg = customDmMsg || `Your staff conversation (Ticket ${ticket.shortId || ('#'+ticket.id)}) has been closed by staff. Transcript saved.`;
+        if (u) await u.send(dmMsg).catch(() => {});
       } catch (e) {}
       const ch = await client.channels.fetch(ticket.channelId).catch(() => null);
       if (ch) {
@@ -689,7 +691,8 @@ ${String(err && (err.stack || err))}`;
         // Ask if staff wants to create an ad for this tutor
         const yesBtn = new ButtonBuilder().setCustomId(`mm_create_ad|${channelId}|yes`).setLabel('✅ Yes, Create Ad').setStyle(ButtonStyle.Success);
         const noBtn = new ButtonBuilder().setCustomId(`mm_create_ad|${channelId}|no`).setLabel('❌ No, Close Ticket').setStyle(ButtonStyle.Danger);
-        const row = new ActionRowBuilder().addComponents(yesBtn, noBtn);
+        const contactBtn = new ButtonBuilder().setCustomId(`mm_set_contact|${channelId}`).setLabel('📱 Set Contact Info').setStyle(ButtonStyle.Secondary);
+        const row = new ActionRowBuilder().addComponents(yesBtn, noBtn, contactBtn);
         
         await interaction.channel.send({ content: `Tutor <@${ticket.userId}> has been added for **${selectedSubject}**.\n\nWould you like to create an ad for this tutor?`, components: [row] }).catch(() => {});
         return;
@@ -792,6 +795,47 @@ ${String(err && (err.stack || err))}`;
         }
       }
 
+      // Set contact info button for accepted tutor (mm_set_contact|channelId)
+      if (custom.startsWith('mm_set_contact|')) {
+        const channelId = custom.split('|')[1];
+        const ticket = db.modmail.byChannel[channelId];
+        if (!ticket) return safeReply(interaction, { content: 'Ticket not found.', ephemeral: true });
+        if (!isStaff(interaction.member)) return safeReply(interaction, { content: 'Only staff can use this.', ephemeral: true });
+
+        const tutorUserId = ticket.userId;
+        db.tutorProfiles = db.tutorProfiles || {};
+        db.tutorProfiles[tutorUserId] = db.tutorProfiles[tutorUserId] || { addedAt: Date.now(), students: [], reviews: [], rating: { count: 0, avg: 0 }, notes: '' };
+        const profile = db.tutorProfiles[tutorUserId];
+
+        const modal = new ModalBuilder()
+          .setCustomId(`mm_contact_modal|${channelId}|${tutorUserId}`)
+          .setTitle('Set Tutor Contact Info');
+        const phoneInput = new TextInputBuilder()
+          .setCustomId('phone').setLabel('Phone Number').setStyle(TextInputStyle.Short)
+          .setRequired(false).setValue((profile.phoneNumber || '').substring(0, 100)).setPlaceholder('e.g. +1 234 567 890');
+        const dobInput = new TextInputBuilder()
+          .setCustomId('dob').setLabel('Date of Birth').setStyle(TextInputStyle.Short)
+          .setRequired(false).setValue((profile.dob || '').substring(0, 100)).setPlaceholder('e.g. YYYY-MM-DD');
+        modal.addComponents(new ActionRowBuilder().addComponents(phoneInput), new ActionRowBuilder().addComponents(dobInput));
+        try { await interaction.showModal(modal); } catch (err) {
+          console.warn('showModal mm_set_contact failed', err);
+          return safeReply(interaction, { content: 'Could not open contact info modal, try again.', ephemeral: true });
+        }
+        return;
+      }
+
+      // Close ticket after all ads are done (mm_close_after_ads|channelId)
+      if (custom.startsWith('mm_close_after_ads|')) {
+        const channelId = custom.split('|')[1];
+        const ticket = db.modmail.byChannel[channelId];
+        if (!ticket) return safeReply(interaction, { content: 'Ticket not found.', ephemeral: true });
+        if (!isStaff(interaction.member)) return safeReply(interaction, { content: 'Only staff can close.', ephemeral: true });
+        await interaction.deferUpdate().catch(() => {});
+        await interaction.channel.send('Closing ticket...').catch(() => {});
+        await closeTicket(ticket, `${interaction.user.tag} (staff)`);
+        return;
+      }
+
       // Create ad buttons (mm_create_ad|channelId|yes/no)
       if (custom.startsWith('mm_create_ad|')) {
         const parts = custom.split('|');
@@ -815,6 +859,11 @@ ${String(err && (err.stack || err))}`;
         
         if (decision === 'yes') {
           // Ask for ad category level first, then open createad modal
+          // NOTE: CREATEAD_LEVEL_CHANNELS is defined here but not currently used by the
+          // ad-creation flow (the selected level is forwarded directly to the createad modal
+          // via open_createad_modal). The IDs below could not be automatically mapped to
+          // production server channels from the available JSON export; verify them manually
+          // against the production guild (1360708397850431488) if this block is re-activated.
           const CREATEAD_LEVEL_CHANNELS = {
             university: '1458552573999972586',
             a_level: '1458552889130614814',
@@ -1228,6 +1277,25 @@ ${String(err && (err.stack || err))}`;
         await closeTicket(ticket, `${interaction.user.tag} (staff)`);
         return;
       }
+
+      // Handle set contact info modal (mm_contact_modal|channelId|tutorUserId)
+      if (interaction.customId.startsWith('mm_contact_modal|')) {
+        const parts = interaction.customId.split('|');
+        const channelId = parts[1];
+        const tutorUserId = parts[2];
+        if (!isStaff(interaction.member)) return safeReply(interaction, { content: 'Only staff can set tutor contact info.', ephemeral: true });
+
+        const phone = interaction.fields.getTextInputValue('phone') || '';
+        const dob = interaction.fields.getTextInputValue('dob') || '';
+
+        db.tutorProfiles = db.tutorProfiles || {};
+        db.tutorProfiles[tutorUserId] = db.tutorProfiles[tutorUserId] || { addedAt: Date.now(), students: [], reviews: [], rating: { count: 0, avg: 0 }, notes: '' };
+        db.tutorProfiles[tutorUserId].phoneNumber = phone;
+        db.tutorProfiles[tutorUserId].dob = dob;
+        saveDB();
+
+        return safeReply(interaction, { content: `Contact info saved for tutor <@${tutorUserId}>.`, ephemeral: true });
+      }
     } catch (err) {
       console.error('add subject modal error', err);
       await notifyStaff(err, { module: 'modmail.addSubjectModal' });
@@ -1344,6 +1412,54 @@ ${String(err && (err.stack || err))}`;
       await closeTicket(ticket, closedByText || 'system');
     } catch (e) { console.warn('closeTicketByChannel failed', e); }
   };
+
+  // Modmail inactivity worker:
+  //   • 24 h after creation with no user message → DM user a warning (ticket will close in 48 h)
+  //   • 72 h after creation with no user message → auto-close the ticket and DM user
+  setInterval(async () => {
+    try {
+      const now = Date.now();
+      const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+      const SEVENTY_TWO_HOURS  = 72 * 60 * 60 * 1000;
+      for (const [, ticket] of Object.entries((db.modmail && db.modmail.byChannel) ? db.modmail.byChannel : {})) {
+        try {
+          if (!ticket || !ticket.createdAt) continue;
+          // 'User ' prefix (with trailing space) matches all user-originated messages in modmail,
+          // where `who` is always set to the string "User " followed by the user's tag or ID —
+          // never a bare "User" token without a suffix.
+          const hasUserMessage = (ticket.messages || []).some(m => m.who && m.who.startsWith('User '));
+          if (hasUserMessage) continue;
+          const age = now - ticket.createdAt;
+          // 72-hour auto-close
+          if (age >= SEVENTY_TWO_HOURS) {
+            await closeTicket(
+              ticket,
+              'auto-closed: no user message within 72 hours',
+              `Your support ticket (Ticket ${ticket.shortId || ('#' + ticket.id)}) has been automatically closed because no message was received from you within 72 hours of it being opened.\n\nYou're welcome to open a new ticket any time if you still need assistance.`
+            );
+            continue;
+          }
+          // 24-hour warning (only if not already sent)
+          if (age >= TWENTY_FOUR_HOURS && !ticket.inactivityWarnedAt) {
+            try {
+              const u = await client.users.fetch(ticket.userId).catch(() => null);
+              if (u) {
+                await u.send(
+                  `Hi! Your support ticket (Ticket ${ticket.shortId || ('#' + ticket.id)}) has been open for 24 hours but we haven't received any message from you yet.\n\nPlease send your request so our staff can help you. If no message is received within 48 more hours, this ticket will be **automatically closed**.`
+                ).catch(() => {});
+              }
+              ticket.inactivityWarnedAt = now;
+              saveDB();
+            } catch (e) {
+              console.warn(`modmail inactivity: 24h warning DM failed for ticket ${ticket.id}`, e);
+            }
+          }
+        } catch (e) {
+          console.warn(`modmail inactivity worker: error for ticket ${ticket && ticket.id}`, e);
+        }
+      }
+    } catch (e) { console.warn('modmail inactivity worker error', e); }
+  }, 60 * 1000); // runs every minute
 
   console.log('modmail initialized');
 }

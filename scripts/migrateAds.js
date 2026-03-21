@@ -13,12 +13,11 @@
  * Required environment variables (same as the main bot):
  *   BOT_TOKEN              Discord bot token
  *   GUILD_ID               Discord server (guild) ID
- *   FIND_A_TUTOR_CHANNEL_ID  Channel ID for the main find-a-tutor channel
  *
  * The script reads and writes data.json directly, mirroring the bot's db layer.
  */
 
-import { Client, GatewayIntentBits, ChannelType } from 'discord.js';
+import { Client, GatewayIntentBits, ChannelType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -28,18 +27,16 @@ const DATA_FILE = join(__dirname, '..', 'data.json');
 
 const {
   BOT_TOKEN,
-  GUILD_ID,
-  FIND_A_TUTOR_CHANNEL_ID
+  GUILD_ID
 } = process.env;
 
-if (!BOT_TOKEN || !GUILD_ID || !FIND_A_TUTOR_CHANNEL_ID) {
-  console.error('Missing required env vars: BOT_TOKEN, GUILD_ID, FIND_A_TUTOR_CHANNEL_ID');
+if (!BOT_TOKEN || !GUILD_ID) {
+  console.error('Missing required env vars: BOT_TOKEN, GUILD_ID');
   process.exit(1);
 }
 
 const force = process.argv.includes('--force');
 
-const MAX_DESCRIPTION_LINES = 4;
 const RATE_LIMIT_DELAY_MS = 1000;
 
 // --- CreateAd level configuration (mirrors CREATEAD_LEVEL_CONFIG in index.js) ---
@@ -211,8 +208,6 @@ async function main() {
       // Fall back to auto-detecting the level from the subject name so that ads
       // created before the level field was introduced are still routed correctly.
       const levelKey = adData.level || detectLevelFromSubject(subject) || 'other';
-      const tutorId = adData.tutorId || null;
-      const embedDescription = adData.embed && adData.embed.description ? adData.embed.description : '';
 
       if (!subject) {
         console.warn(`  [SKIP] ${messageId}: no subject found`);
@@ -227,14 +222,36 @@ async function main() {
         continue;
       }
 
-      const shortContent = [
-        `**${subject}**`,
-        tutorId ? `Tutor: <@${tutorId}>` : null,
-        embedDescription ? embedDescription.split('\n').slice(0, MAX_DESCRIPTION_LINES).join('\n') : null,
-        `*See full ad in <#${FIND_A_TUTOR_CHANNEL_ID}>*`
-      ].filter(Boolean).join('\n');
+      // Build structured embed description from fullDetails — no tutor identity revealed
+      const details = adData.fullDetails || {};
+      const adCode = adData.adCode || null;
+      let migrateDesc = '';
+      if (adCode) migrateDesc += `**Tutor Code:** ${adCode}\n`;
+      if (details.subjectCodes) migrateDesc += `**Subject Codes:** ${details.subjectCodes}\n`;
+      if (details.languages) migrateDesc += `**Languages:** ${details.languages}\n`;
+      if (details.price && details.price1on1) {
+        migrateDesc += `**Price (Group):** $${details.price}\n`;
+        migrateDesc += `**Price (1-on-1):** $${details.price1on1}\n`;
+      } else if (details.price) {
+        migrateDesc += `**Price:** $${details.price}\n`;
+      } else if (details.price1on1) {
+        migrateDesc += `**Price (1-on-1):** $${details.price1on1}\n`;
+      }
+      migrateDesc += `\nClick **View Full Details** below for more information.\n`;
+      migrateDesc += `📩 DM <@${client.user.id}> when you're ready to pay!`;
 
-      const sent = await categoryCh.send({ content: shortContent }).catch(() => null);
+      const migrateEmbed = new EmbedBuilder().setTitle(subject).setDescription(migrateDesc);
+      if (adData.embed && adData.embed.color) {
+        try { migrateEmbed.setColor(adData.embed.color); } catch (e) {}
+      }
+
+      const migrateRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`view_full_details|${adCode || subject}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
+      );
+
+      // Do NOT ping tutors — tutor identities are kept secret
+      const sent = await categoryCh.send({ embeds: [migrateEmbed], components: [migrateRow] }).catch(() => null);
       if (sent) {
         db.createAds[messageId].categoryChannelId = categoryCh.id;
         db.createAds[messageId].categoryMessageId = sent.id;
