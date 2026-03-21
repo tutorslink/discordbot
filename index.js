@@ -19,6 +19,8 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 dotenv.config();
 
+import * as appwriteClient from './appwrite/appwrite-client.js';
+
 import pkg from 'discord.js';
 const {
   Client,
@@ -162,8 +164,24 @@ let db = {
   _modmail_helpers: {}
 };
 
+// ---------------------------------------------------------------------------
+// Appwrite background sync (debounced to avoid flooding the API)
+// ---------------------------------------------------------------------------
+
+let _appwriteSyncTimer = null;
+
+function scheduleAppwriteSync() {
+  if (!appwriteClient.isConfigured()) return;
+  if (_appwriteSyncTimer) clearTimeout(_appwriteSyncTimer);
+  _appwriteSyncTimer = setTimeout(() => {
+    _appwriteSyncTimer = null;
+    appwriteClient.syncDB(db).catch(e => console.warn('[Appwrite] Background sync failed:', e.message));
+  }, 5000); // coalesce rapid saves into one sync every 5s
+}
+
 function saveDB() {
   try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch (e) { console.warn('Failed to save DB', e); }
+  scheduleAppwriteSync();
 }
 
 // Ensure labels passed to Discord input builders meet max-length requirements
@@ -440,6 +458,19 @@ if (db.reviewConfig && db.reviewConfig.delayDays && !db.reviewConfig.delaySecond
 }
 
 loadDB();
+
+// After the synchronous JSON load, try to pull fresher data from Appwrite.
+// This runs in the background so the bot starts quickly regardless.
+if (appwriteClient.isConfigured()) {
+  appwriteClient.loadDB().then(appwriteData => {
+    if (appwriteData && Object.keys(appwriteData).length > 0) {
+      Object.assign(db, appwriteData);
+      // Persist the Appwrite data to JSON (backup) without re-triggering a sync
+      try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch (e) { /* non-fatal */ }
+      console.log('[Appwrite] Loaded latest data from Appwrite.');
+    }
+  }).catch(e => console.warn('[Appwrite] Initial load failed, using data.json:', e.message));
+}
 
 // Helper: build a standardized archive embed for an ad entry
 function buildArchiveEmbed(adData, msgId, reason, archivedBy) {
