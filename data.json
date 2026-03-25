@@ -1,5 +1,5 @@
 {
-  "nextTicketId": 45,
+  "nextTicketId": 51,
   "subjects": [
     "IGCSE/GCSE Accounting",
     "AS/AL Maths",
@@ -54,7 +54,8 @@
     "AS/AL Information Technology",
     "AS/AL Law",
     "AS/AL Other Subjects",
-    "AS/AL Psychology"
+    "AS/AL Psychology",
+    "Arabic"
   ],
   "subjectLevels": {
     "IGCSE/GCSE Accounting": "igcse",
@@ -104,7 +105,8 @@
     "AS/AL Information Technology": "a_level",
     "AS/AL Law": "a_level",
     "AS/AL Other Subjects": "a_level",
-    "AS/AL Psychology": "a_level"
+    "AS/AL Psychology": "a_level",
+    "Arabic": "language"
   },
   "subjectTutors": {
     "AS/AL Maths": [
@@ -252,12 +254,44 @@
         }
       ],
       "createdAt": 1773504366536
+    },
+    "48": {
+      "ticketChannelId": "1485385632518770708",
+      "studentId": "873095080938975232",
+      "tutorMessageId": "1485385674805874839",
+      "tutorThreadId": "1485385674805874839",
+      "subject": "AS/AL Maths",
+      "approved": true,
+      "tutorCount": 0,
+      "tutorMap": {},
+      "messages": [
+        {
+          "who": "Student",
+          "at": 1774213939830,
+          "text": "test",
+          "attachments": []
+        }
+      ],
+      "createdAt": 1774213932642
+    },
+    "50": {
+      "ticketChannelId": "1486359243429777450",
+      "studentId": "1409804727247441983",
+      "tutorMessageId": null,
+      "tutorThreadId": null,
+      "subject": "IGCSE/GCSE Biology",
+      "approved": false,
+      "awaitingApproval": false,
+      "tutorCount": 0,
+      "tutorMap": {},
+      "messages": [],
+      "createdAt": 1774446059520
     }
   },
   "cooldowns": {
     "742420325559435375": 1765301259895,
     "688778704058318921": 1764421407397,
-    "873095080938975232": 1773430117116,
+    "873095080938975232": 1774229111795,
     "731617267959463977": 1764424084163,
     "1295782123944280088": 1764617652503,
     "877464049082855435": 1765024743989,
@@ -280,13 +314,15 @@
     "915423475294961734": 1773056635879,
     "817046548851720202": 1773081982832,
     "916882216481615922": 1773504366536,
-    "1120097795945267256": 1773605273063
+    "1120097795945267256": 1773605273063,
+    "1463470889902538934": 1774200847811,
+    "1409804727247441983": 1774446059520
   },
   "sticky": {
     "title": "Looking for *your* subject tutor in *this* crowd?",
     "body": "Try smashing that search icon, and type *only* your subject name.\nAnd you're gonna get all the available tutors for that subject. For all levels.",
     "color": "#fffff",
-    "messageId": "1483929468438446220"
+    "messageId": "1486122380404326544"
   },
   "createAds": {
     "1445552859272839381": {
@@ -299,16 +335,6 @@
       "categoryChannelId": "1429446000724021278",
       "categoryMessageId": "1483929884295172166"
     },
-    "1445552221059158222": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "IGCSE/GCSE Add Maths",
-        "description": "Subject level : Cambridge IGCSE / Edexcel GCSE / O-Level  \nSubject code(s): 0606 <@&1429446335924539492> \n\n# 👨‍🏫 Tutor Details & Pricing\n- Languages: English & Arabic\n- Class Type: Both, Group classes & one-on-one\n- Class duration: 1 hour 30 minutes \n- Monthly Schedule: 8 classes/ month\n- Price per Month (USD) for one-on-one classes: 32$\n- Price per Month (USD) for Group classes: 16$\n- Time zone: GMT2+\n\nWant to talk to the available tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor```\n\n```Student Testimonials:```\n-# @mazenez(a2 student): \"5/5 you explain well\"\n-# @holaamigosmestefano(international maths student): \"You explained it so well\" \"I will definitely be messaging you for tutoring in as and a level\"\n-# And many other positive ratings\n\n\n```💳 Payment Terms:```\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow ⁠tutors-link-policies throughout the entire process.\n\nOnce you're ready to pay, DM @Tutors Link and you will be guided to the next steps.\nYou can also DM @Tutors Link for any problems or suggestions",
-        "color": "#fffff"
-      },
-      "categoryChannelId": "1429446028503023746",
-      "categoryMessageId": "1483929892474327151"
-    },
     "1445136339438927936": {
       "channelId": "1429776595668697191",
       "embed": {
@@ -318,26 +344,6 @@
       },
       "categoryChannelId": "1432699000808669246",
       "categoryMessageId": "1483929900917194802"
-    },
-    "1444312423984009328": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "IGCSE/GCSE Accounting",
-        "description": "Subject level : Cambridge IGCSE / Edexcel GCSE / O-Level  \nSubject codes: 0452 / 4AC1 / 7707\n\n\n# 👨‍🏫 Tutor Details & Pricing\n- Languages: Urdu & English  \n- Class Type: Both, Group Classes & one-on-one\n- Monthly Schedule: 4 classes/week = 16 classes/month\n- Price per Month (USD) for one-on-one classes: 150$\n- Price per Month (USD) for Group classes: 80$\n- Time zone: GMT3+\n\nWant to talk to the avalible tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\n\n```Student Testimonials:```\n-# @Icebearthebestwebarebear \"ur a life saver quite literally the only reason i got good grades\"\n-# @blitz_29._73429  \"Thank you so much mann this has happened all because of you, lowkey most of the credits goes to you. My parents and I will remember this favor of urs forever ❤️❤️❤️\n-# Result: Top in western province, Saudi Arabia\n-# Syllabus: Accounting\n-# Qualification: Cambridge IGCSE\"\n\n\n```💳 Payment Terms:  ```\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow ⁠tutors-link-policies throughout the entire process.\n\nOnce you're ready to pay, DM @Tutors Link and you will be guided to the next steps.\nYou can also DM @Tutors Link for any problems or suggestions",
-        "color": "#fffff"
-      },
-      "categoryChannelId": "1429425391378104320",
-      "categoryMessageId": "1483929908798292160"
-    },
-    "1450096179554553928": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "IGCSE/GCSE Computer Science",
-        "description": "Subject level : Cambridge IGCSE / O-Level  \nSubject codes: 0478/2210\n\n\n# 👨‍🏫 Tutor Details & Pricing\n- Languages: Urdu & English  \n- Class Type: Both, Group Classes & one-on-one\n- Monthly Schedule: 4 classes/week = 16 classes/month\n- Price per Class (USD) for one-on-one classes: 7.5$\n- Price per Class (USD) for Group classes: 5$\n- Time zone: GMT+5\n\nWant to talk to the avalible tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\nI’m a passionate Computer Science and Math tutor who helps students truly understand concepts instead of memorizing formulas. I break topics down simply, adapt to each student’s pace, and focus on building strong logic, problem-solving skills, and long-term confidence.\n\n```Student Testimonials:```\n-# \"This tutor really helped me with computer science. I was struggling a lot with pseudocode and he taught it in such a way that I went from a D in my mids to an A in my mocks. An absolutely huge level of improvement I must say. I would recommend him to anyone requiring help, especially Computer Science.\"\n\n\n```💳 Payment Terms:  ```\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow ⁠tutors-link-policies throughout the entire process.\n\nOnce you're ready to pay, DM @Tutors Link and you will be guided to the next steps.\nYou can also DM @Tutors Link for any problems or suggestions",
-        "color": "#fffff"
-      },
-      "categoryChannelId": "1429446573636452463",
-      "categoryMessageId": "1483929918193795122"
     },
     "1450821190297063615": {
       "channelId": "1429776595668697191",
@@ -390,17 +396,6 @@
       "categoryChannelId": "1432698830884700243",
       "categoryMessageId": "1483929953283211314"
     },
-    "1452743151738556486": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "IGCSE/GCSE Computer Science",
-        "description": "Subject level : Cambridge IGCSE & Edexcel GCSE\nSubject code(s): 0478\n\n👨‍🏫 Tutor Details & Pricing\nLanguages: English & Arabic\nClass Type: One-on-one\nClass duration: 1 hour\nMonthly Schedule: 12 classes/ month\nPrice per Class: 6$\nTime zone: GMT3+\n\nWant to talk to the available tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\n\nI'm an A Level student (FM, CS, Phys, Math, Chem) and every student I've had has one big advantage: that they can learn from someone who is fresh out of the same exams that they're giving. This combined with notes I write, and my explanation methods are certainly a big factor in enabling efficient teaching and communication.\n\n```Student Testimonials:```\n\n\"tried over 5 different tutors and he was the only one who taught me what i actually needed to know with a great explanation. 5/5\"\nThis tutor \"has certainly improved the way I study, and tackle questions that are difficult. One big positive about him is that he is in the same age group as me and that helps us communicate more efficiently with each other.\"\nAnd more positive feedback...\n\n```💳 Payment Terms:```\n\n\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow⁠ <#1437161364568277013> throughout the entire process.\n\nOnce you're ready to pay, DM <@1442933613728497746> and you will be guided to the next steps.\nYou can also DM <@1442933613728497746> for any problems or suggestions",
-        "color": "#fffff"
-      },
-      "tutorId": "708964764516352030",
-      "categoryChannelId": "1429446573636452463",
-      "categoryMessageId": "1483929960724041889"
-    },
     "1453300477818048633": {
       "channelId": "1429776595668697191",
       "embed": {
@@ -410,17 +405,6 @@
       },
       "categoryChannelId": "1432699000808669246",
       "categoryMessageId": "1483929968944742430"
-    },
-    "1453372541291860049": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "University Biology",
-        "description": "Subject Level: University\nSubject codes: NA\n\n\n#  👨‍🏫 Tutor Details & Pricing\nLanguages: English\nClass Type: Both; One-on-one & Group Classes\nClass Duration: 1 hour\nMonthly Schedule: 3 classes/week = 12 classes/month\nPrice per Class (USD) for Group classes: 5$\nTime zone: GMT-5\n\nWant to talk to the avalible tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\n\"I am a Doctor of Physical Therapy with a strong background in Biology and Anatomy & Physiology. I have several years of tutoring and teaching experience supporting undergraduate students. I focus on clear explanations, real-world application, and building student confidence to achieve academic success.\"\n\n```Student Testimonials:```\n\n\n```💳 Payment Terms:  ```\n\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow ⁠<#1437161364568277013> throughout the entire process.\n\nOnce you're ready to pay, DM <@1442933613728497746> and you will be guided to the next steps.\nYou can also DM <@1442933613728497746> for any problems or suggestions",
-        "color": "#fffff"
-      },
-      "tutorId": "1144296651272503296",
-      "categoryChannelId": "1429425639965986887",
-      "categoryMessageId": "1483929976750342235"
     },
     "1461495489714454580": {
       "channelId": "1429776595668697191",
@@ -461,16 +445,6 @@
       },
       "categoryChannelId": "1432698830884700243",
       "categoryMessageId": "1483930018328481933"
-    },
-    "1464205626501763095": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "IGCSE/GCSE Accounting",
-        "description": "Subject Level: IGCSE/GCSE\nSubject codes: 0452 and equivalents\n\n#  👨‍🏫 Tutor Details & Pricing\n\n\nLanguages: English and Urdu\nClass Type: Both One-on-one and Group Classes\nClass Duration: 1 Hour\nMonthly Schedule: 4 classes/week = 16 classes/month\nPrice per Class (USD) for Group classes: $7\nPrice per Class for One-on-one Classes: 10\nTime zone: GMT5+\n\nWant to talk to the available tutors for this subject?\n\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\nI am a CA finalist, working at one of big 4 firms in Pakistan, with a teaching experience of 4 years. Accounting doesn't require learning for hours instead you just need to learn concepts and principles that are interconnected.\n\n```Student Testimonials:```\n\n\n```💳 Payment Terms:  ```\n100% upfront before classes begin\nYou'll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow <#1437161364568277013> throughout the entire process.\n\nOnce you're ready to pay, DM <@1442933613728497746> and you will be guided to the next steps.\nYou can also DM <@1442933613728497746> for any problems or suggestions",
-        "color": "#fffff"
-      },
-      "categoryChannelId": "1429425391378104320",
-      "categoryMessageId": "1483930025723035723"
     },
     "1464315302996086916": {
       "channelId": "1429776595668697191",
@@ -526,31 +500,6 @@
         "color": "#fffff"
       }
     },
-    "1467454019525152922": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "Quran",
-        "description": "**Price:** 5-6 USD/class\n**Timezone:** \n**Languages:** English & Arabic\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
-        "color": "#fffff"
-      },
-      "tutorId": "1303146036612562974",
-      "level": "other",
-      "categoryChannelId": "1458552927454105832",
-      "categoryMessageId": "1467454022062440489",
-      "fullDetails": {
-        "subjectLevel": "",
-        "subjectCodes": "",
-        "languages": "English & Arabic",
-        "classType": "Both one-on-one & Group Classes",
-        "classDuration": "1 Hour",
-        "monthlySchedule": "4 classes/week = 16 classes/month",
-        "price": "Time zone:",
-        "timezone": "",
-        "tutorMessage": "Student Testimonials:",
-        "testimonials": "Payment Terms: 100% upfront before classes begin",
-        "paymentTerms": "100% upfront before classes begin"
-      }
-    },
     "1468900973819990047": {
       "channelId": "1429776595668697191",
       "embed": {
@@ -571,31 +520,6 @@
         "monthlySchedule": "Classes/month: classes/week = Price per Class (USD) for Group classes: classes/month",
         "price": "Time zone:",
         "timezone": "",
-        "tutorMessage": "Student Testimonials:",
-        "testimonials": "Payment Terms: 100% upfront before classes begin",
-        "paymentTerms": "100% upfront before classes begin"
-      }
-    },
-    "1469179649060901109": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "IGCSE/GCSE Biology",
-        "description": "**Level:** IGCSE/GCSE\n**Price per class:** $7\n**Timezone:** GMT+8\n**Languages:** English and Fillipino\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
-        "color": "#fffff"
-      },
-      "tutorId": "587448312353914906",
-      "level": "igcse",
-      "categoryChannelId": "1429425639965986887",
-      "categoryMessageId": "1483930071608852753",
-      "fullDetails": {
-        "subjectLevel": "IGCSE/GCSE",
-        "subjectCodes": "0610",
-        "languages": "English and Fillipino",
-        "classType": "one-on-one",
-        "classDuration": "1 Hour",
-        "monthlySchedule": "4 classes/week = 16 classes/month",
-        "price": "20",
-        "timezone": "GMT+8",
         "tutorMessage": "Student Testimonials:",
         "testimonials": "Payment Terms: 100% upfront before classes begin",
         "paymentTerms": "100% upfront before classes begin"
@@ -728,174 +652,283 @@
         "paymentTerms": "100% upfront before classes begin"
       }
     },
-    "1482097921192231053": {
+    "1485385078463922278": {
       "channelId": "1429776595668697191",
       "embed": {
-        "title": "AS/AL Accounting",
-        "description": "**Level:** beginner\n**Price:** $1\n**Timezone:** abc3\n**Languages:** japanese\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "title": "AS/AL Maths",
+        "description": "**Price (1-on-1):** $32$/month\n**Timezone:** GMT2+\n**Languages:** English and Arabic\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
         "color": "#fffff"
       },
       "tutorId": null,
-      "level": "language",
-      "adCode": "Lang-1",
-      "categoryChannelId": "1432698735971926016",
-      "categoryMessageId": "1483930123639062579",
-      "fullDetails": {
-        "subjectLevel": "beginner",
-        "subjectCodes": "0",
-        "languages": "japanese",
-        "classType": "oneonone",
-        "classDuration": "15mins",
-        "monthlySchedule": "2 classes/week = 8 classes/month",
-        "price": "1",
-        "timezone": "abc3",
-        "tutorMessage": "ohio guzaimas",
-        "testimonials": "onii channn dai ski",
-        "paymentTerms": "100% upfront before classes begin"
-      }
-    },
-    "1482143149550731264": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "University Chemistry",
-        "description": "**Price (Group):** $Price per Class (USD) for 1-on-1 classes:\n**Price (1-on-1):** $Time zone:\n**Languages:** Class Type:\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
-        "color": "#fffff"
-      },
-      "tutorId": null,
-      "level": "university",
-      "adCode": "Uni-2",
-      "categoryChannelId": "1429425557648707614",
-      "categoryMessageId": "1483930131021037680",
-      "fullDetails": {
-        "subjectLevel": "Subject codes:",
-        "subjectCodes": "",
-        "languages": "Class Type:",
-        "classType": "Class Duration:",
-        "classDuration": "Classes/week:",
-        "monthlySchedule": "Classes/month: classes/week = Price per Class (USD) for Group classes: classes/month",
-        "price": "Price per Class (USD) for 1-on-1 classes:",
-        "price1on1": "Time zone:",
-        "timezone": "",
-        "tutorMessage": "Student Testimonials:",
-        "testimonials": "Payment Terms: 100% upfront before classes begin",
-        "paymentTerms": "100% upfront before classes begin"
-      }
-    },
-    "1483647782094114938": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "IGCSE/GCSE Chemistry",
-        "description": "Click \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
-        "color": "#fffff"
-      },
-      "tutorId": "683383508118405227",
-      "level": "igcse",
-      "adCode": "IG-5",
-      "categoryChannelId": "1429425557648707614",
-      "categoryMessageId": "1483930139661435022",
-      "fullDetails": {
-        "subjectLevel": "NA",
-        "subjectCodes": "5079/0620",
-        "languages": "NA",
-        "classType": "NA",
-        "classDuration": "NA",
-        "monthlySchedule": "NA",
-        "price": "",
-        "price1on1": "",
-        "timezone": "NA",
-        "tutorMessage": "",
-        "testimonials": "",
-        "paymentTerms": "100% upfront before classes begin"
-      }
-    },
-    "1483648243849105488": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "AS/AL Biology",
-        "description": "Click \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
-        "color": "#fffff"
-      },
-      "tutorId": "683383508118405227",
       "level": "a_level",
-      "adCode": "AL-1",
-      "categoryChannelId": "1432698769966764062",
-      "categoryMessageId": "1483930148880384142",
+      "adCode": "AL-2",
+      "categoryChannelId": "1432699000808669246",
+      "categoryMessageId": "1485385082352177324",
       "fullDetails": {
-        "subjectLevel": "NA",
-        "subjectCodes": "NA",
-        "languages": "NA",
-        "classType": "NA",
-        "classDuration": "NA",
-        "monthlySchedule": "NA",
+        "subjectLevel": "Cambridge A-Levels / Edexcel A-Levels **PURE ONLY**",
+        "subjectCodes": "9709 / XMA01 / YMA01",
+        "languages": "English and Arabic",
+        "classType": "One-on-one",
+        "classDuration": "1 hour 30 minutes",
+        "monthlySchedule": "8 classes/month",
         "price": "",
-        "price1on1": "",
-        "timezone": "NA",
+        "price1on1": "32$/month",
+        "timezone": "GMT2+",
         "tutorMessage": "",
-        "testimonials": "",
+        "testimonials": "@mazenez(a2 student): \"5/5 you explain well\"",
         "paymentTerms": "100% upfront before classes begin"
       }
     },
-    "1483648405774270516": {
+    "1485386600954200205": {
       "channelId": "1429776595668697191",
       "embed": {
-        "title": "University Biology",
-        "description": "Click \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "title": "IGCSE/GCSE Accounting",
+        "description": "**Price (Group):** $5\n**Price (1-on-1):** $9.375\n**Timezone:** GMT3+\n**Languages:** Urdu & English\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
         "color": "#fffff"
       },
-      "tutorId": "683383508118405227",
-      "level": "university",
-      "adCode": "Uni-3",
-      "categoryChannelId": "1429425639965986887",
-      "categoryMessageId": "1483930156602233013",
+      "tutorId": "873095080938975232",
+      "level": "igcse",
+      "adCode": "IG-9",
+      "categoryChannelId": "1485379727962279986",
+      "categoryMessageId": "1485386603999395960",
       "fullDetails": {
-        "subjectLevel": "NA",
-        "subjectCodes": "NA",
-        "languages": "NA",
-        "classType": "NA",
-        "classDuration": "NA",
-        "monthlySchedule": "NA",
-        "price": "",
-        "price1on1": "",
-        "timezone": "NA",
-        "tutorMessage": "",
-        "testimonials": "",
+        "subjectLevel": "Cambridge IGCSE / Edexcel GCSE / O-Level",
+        "subjectCodes": "0452 / 4AC1 / 7707",
+        "languages": "Urdu & English",
+        "classType": "Both, Group Classes & one-on-one",
+        "classDuration": "60 Mins",
+        "monthlySchedule": "4 classes/week = 16 classes/month",
+        "price": "5",
+        "price1on1": "9.375",
+        "timezone": "GMT3+",
+        "tutorMessage": "I have been teaching IGCSE Accounting for over two years,",
+        "testimonials": "@Icebearthebestwebarebear \"ur a life saver quite literally the only reason i got good grades\"",
         "paymentTerms": "100% upfront before classes begin"
       }
     },
-    "1483929453024382986": {
+    "1485390317749538927": {
       "channelId": "1429776595668697191",
       "embed": {
         "title": "IGCSE/GCSE Add Maths",
-        "description": "**Price (Group):** $n/a\n**Price (1-on-1):** $$100 usd/hr\n**Timezone:** GST\n**Languages:** English, French,and  Mandarin\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "description": "**Price (Group):** $2\n**Price (1-on-1):** $4\n**Timezone:** GMT2+\n**Languages:** English & Arabic\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
         "color": "#fffff"
       },
-      "tutorId": null,
+      "tutorId": "731617267959463977",
       "level": "igcse",
-      "adCode": "IG-7",
+      "adCode": "IG-10",
       "categoryChannelId": "1429446028503023746",
-      "categoryMessageId": "1483930166903308442",
+      "categoryMessageId": "1485390320903389266",
       "fullDetails": {
-        "subjectLevel": "igcse/o levels",
-        "subjectCodes": "1122",
-        "languages": "English, French,and  Mandarin",
-        "classType": "one-on-one",
-        "classDuration": "1.5hrs",
-        "monthlySchedule": "3 classes/week = 12 classes/month",
-        "price": "n/a",
-        "price1on1": "$100 usd/hr",
-        "timezone": "GST",
+        "subjectLevel": "Cambridge IGCSE / Edexcel GCSE / O-Level",
+        "subjectCodes": "0606",
+        "languages": "English & Arabic",
+        "classType": "Both, Group classes & one-on-one",
+        "classDuration": "1 hour 30 minutes",
+        "monthlySchedule": "2 classes/week = 8 classes/month",
+        "price": "2",
+        "price1on1": "4",
+        "timezone": "GMT2+",
         "tutorMessage": "",
+        "testimonials": "@mazenez(a2 student): \"5/5 you explain well\"",
+        "paymentTerms": "100% upfront before classes begin"
+      }
+    },
+    "1485394984109735936": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Computer Science",
+        "description": "**Price (Group):** $5\n**Price (1-on-1):** $7.5\n**Timezone:** GMT+5\n**Languages:** Urdu & English\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "820535075178938368",
+      "level": "igcse",
+      "adCode": "IG-11",
+      "categoryChannelId": "1429446573636452463",
+      "categoryMessageId": "1485394986911399938",
+      "fullDetails": {
+        "subjectLevel": "Cambridge IGCSE / O-Level",
+        "subjectCodes": "0478/2210",
+        "languages": "Urdu & English",
+        "classType": "Both, Group Classes & one-on-one",
+        "classDuration": "60 Mins",
+        "monthlySchedule": "4 classes/week = 16 classes/month",
+        "price": "5",
+        "price1on1": "7.5",
+        "timezone": "GMT+5",
+        "tutorMessage": "I’m a passionate Computer Science and Math tutor who helps",
+        "testimonials": "\"This tutor really helped me with computer science. I was struggling a lot with pseudocode and he taught it in such a way that I went from a D in my mids to an A in my mocks. An absolutely huge level of improvement I must say. I would recommend him to anyone requiring help, especially Computer Science.\"",
+        "paymentTerms": "100% upfront before classes begin"
+      }
+    },
+    "1485395701818195978": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Computer Science",
+        "description": "**Price (1-on-1):** $6\n**Timezone:** GMT3+\n**Languages:** English, Arabic & Urdu\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "708964764516352030",
+      "level": "igcse",
+      "adCode": "IG-12",
+      "categoryChannelId": "1429446573636452463",
+      "categoryMessageId": "1485395704846356532",
+      "fullDetails": {
+        "subjectLevel": "Cambridge IGCSE & Edexcel GCSE",
+        "subjectCodes": "0478",
+        "languages": "English, Arabic & Urdu",
+        "classType": "One-on-one",
+        "classDuration": "60 Mins",
+        "monthlySchedule": "3 classes/week = 12 classes/month",
+        "price": "",
+        "price1on1": "6",
+        "timezone": "GMT3+",
+        "tutorMessage": "I'm an A Level",
+        "testimonials": "\"tried over 5 different tutors and he was the only one who taught me what i actually needed to know with a great explanation. 5/5\"",
+        "paymentTerms": "100% upfront before classes begin"
+      }
+    },
+    "1485396106572468264": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Accounting",
+        "description": "**Price (Group):** $7\n**Price (1-on-1):** $10\n**Timezone:** GMT5+\n**Languages:** English and Urdu\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "1097622577079398421",
+      "level": "igcse",
+      "adCode": "IG-13",
+      "categoryChannelId": "1485379727962279986",
+      "categoryMessageId": "1485396110280233222",
+      "fullDetails": {
+        "subjectLevel": "IGCSE/GCSE",
+        "subjectCodes": "0452 and equivalents",
+        "languages": "English and Urdu",
+        "classType": "Both One-on-one and Group Classes",
+        "classDuration": "60 Mins",
+        "monthlySchedule": "4 classes/week = 16 classes/month",
+        "price": "7",
+        "price1on1": "10",
+        "timezone": "GMT5+",
+        "tutorMessage": "I am a CA finalist, working at one of big 4 firms in Pakistan, with a teaching experience of 4 years. Accounting doesn't require learning for hours instead you just need to learn concepts and principles that are interconnected.",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      }
+    },
+    "1485397195850256526": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Biology",
+        "description": "**Price (1-on-1):** $7\n**Timezone:** GMT+8\n**Languages:** English and Fillipino\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "587448312353914906",
+      "level": "igcse",
+      "adCode": "IG-14",
+      "categoryChannelId": "1485380553304838435",
+      "categoryMessageId": "1485397199423668255",
+      "fullDetails": {
+        "subjectLevel": "IGCSE/GCSE",
+        "subjectCodes": "0610",
+        "languages": "English and Fillipino",
+        "classType": "One on One",
+        "classDuration": "60 Mins",
+        "monthlySchedule": "4 classes/week = 16 classes/month",
+        "price": "",
+        "price1on1": "7",
+        "timezone": "GMT+8",
+        "tutorMessage": "Hello, I am Kenn, your tutor with a bachelor's degree in Biology. I'm here to help you from Science labs, Civics, and Pre-algebra to English essays. allow me to support you and be your accountability partner so you can study smarter and score high on your tests!",
+        "testimonials": "*No written testimonials*",
+        "paymentTerms": "100% upfront before classes begin"
+      }
+    },
+    "1485400413065838612": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "University Chemistry",
+        "description": "**Price (Group):** $5\n**Price (1-on-1):** $6\n**Timezone:** GMT+5:30\n**Languages:** English, Kannada & Hindi\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "893823707594772480",
+      "level": "university",
+      "adCode": "Uni-4",
+      "categoryChannelId": "1485400416090062938",
+      "categoryMessageId": "1485400418694467706",
+      "fullDetails": {
+        "subjectLevel": "University",
+        "subjectCodes": "NA",
+        "languages": "English, Kannada & Hindi",
+        "classType": "Both, One-on-one & Group classes",
+        "classDuration": "1 hour 30 minutes",
+        "monthlySchedule": "2 classes/week = 8 classes/month",
+        "price": "5",
+        "price1on1": "6",
+        "timezone": "GMT+5:30",
+        "tutorMessage": "I am siddharth bhasme,  currently studying in manipal university. I can offer top quality education and in simplied way",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      }
+    },
+    "1485449154049212627": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "University Biology",
+        "description": "**Price (Group):** $5\n**Price (1-on-1):** $10\n**Timezone:** GMT-5\n**Languages:** English\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "1144296651272503296",
+      "level": "university",
+      "adCode": "Uni-5",
+      "categoryChannelId": "1485449157614239755",
+      "categoryMessageId": "1485449160080494764",
+      "fullDetails": {
+        "subjectLevel": "University",
+        "subjectCodes": "NA",
+        "languages": "English",
+        "classType": "Both; One-on-one & Group Classes",
+        "classDuration": "60 Mins",
+        "monthlySchedule": "3 classes/week = 12 classes/month",
+        "price": "5",
+        "price1on1": "10",
+        "timezone": "GMT-5",
+        "tutorMessage": "\"I am a Doctor of Physical Therapy with a strong background in Biology and Anatomy & Physiology. I have several years of tutoring and teaching experience supporting undergraduate",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      }
+    },
+    "1485450472687927296": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "Quran",
+        "description": "**Price (Group):** $5\n**Price (1-on-1):** $6\n**Timezone:** GMT+1\n**Languages:** English & Arabic\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "1303146036612562974",
+      "level": "other",
+      "adCode": "Other-2",
+      "categoryChannelId": "1485450474952982559",
+      "categoryMessageId": "1485450477528416256",
+      "fullDetails": {
+        "subjectLevel": "NA",
+        "subjectCodes": "NA",
+        "languages": "English & Arabic",
+        "classType": "Both; One-on-one & Group Classes",
+        "classDuration": "45 Mins",
+        "monthlySchedule": "4 classes/week = 16 classes/month",
+        "price": "5",
+        "price1on1": "6",
+        "timezone": "GMT+1",
+        "tutorMessage": "My name is Abdulwahid Nasir, a dedicated Qur’an tutor with experience teaching Qur’an recitation and Tajwīd to",
         "testimonials": "",
         "paymentTerms": "100% upfront before classes begin"
       }
     }
   },
   "nextAdCodes": {
-    "igcse": 7,
-    "other": 1,
-    "university": 3,
-    "language": 1,
-    "a_level": 1
+    "igcse": 14,
+    "other": 2,
+    "university": 6,
+    "language": 4,
+    "a_level": 2
   },
   "archivedAds": {
     "1481846123139432449": {
@@ -1056,6 +1089,471 @@
       "archivedAt": 1773801904311,
       "archivedBy": "873095080938975232",
       "reason": "test"
+    },
+    "1485375103121358878": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Accounting",
+        "description": "**Price (Group):** $5\n**Price (1-on-1):** $9.375\n**Timezone:** GMT3+\n**Languages:** Urdu & English\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "873095080938975232",
+      "level": "igcse",
+      "adCode": "IG-8",
+      "categoryChannelId": "1429425391378104320",
+      "categoryMessageId": "1485375107454079037",
+      "fullDetails": {
+        "subjectLevel": "Cambridge IGCSE / Edexcel GCSE / O-Level",
+        "subjectCodes": "0452 / 4AC1 / 7707",
+        "languages": "Urdu & English",
+        "classType": "Both, Group Classes & one-on-one",
+        "classDuration": "60 mins",
+        "monthlySchedule": "4 classes/week = 16 classes/month",
+        "price": "5",
+        "price1on1": "9.375",
+        "timezone": "GMT3+",
+        "tutorMessage": "I have taught IGCSE Accounting for over two years,",
+        "testimonials": "@Icebearthebestwebarebear \"ur a life saver quite literally the only reason i got good grades\"",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774214318302,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1444312423984009328": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Accounting",
+        "description": "Subject level : Cambridge IGCSE / Edexcel GCSE / O-Level  \nSubject codes: 0452 / 4AC1 / 7707\n\n\n# 👨‍🏫 Tutor Details & Pricing\n- Languages: Urdu & English  \n- Class Type: Both, Group Classes & one-on-one\n- Monthly Schedule: 4 classes/week = 16 classes/month\n- Price per Month (USD) for one-on-one classes: 150$\n- Price per Month (USD) for Group classes: 80$\n- Time zone: GMT3+\n\nWant to talk to the avalible tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\n\n```Student Testimonials:```\n-# @Icebearthebestwebarebear \"ur a life saver quite literally the only reason i got good grades\"\n-# @blitz_29._73429  \"Thank you so much mann this has happened all because of you, lowkey most of the credits goes to you. My parents and I will remember this favor of urs forever ❤️❤️❤️\n-# Result: Top in western province, Saudi Arabia\n-# Syllabus: Accounting\n-# Qualification: Cambridge IGCSE\"\n\n\n```💳 Payment Terms:  ```\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow ⁠tutors-link-policies throughout the entire process.\n\nOnce you're ready to pay, DM @Tutors Link and you will be guided to the next steps.\nYou can also DM @Tutors Link for any problems or suggestions",
+        "color": "#fffff"
+      },
+      "categoryChannelId": "1429425391378104320",
+      "categoryMessageId": "1483929908798292160",
+      "archivedAt": 1774214363159,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1445552221059158222": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Add Maths",
+        "description": "Subject level : Cambridge IGCSE / Edexcel GCSE / O-Level  \nSubject code(s): 0606 <@&1429446335924539492> \n\n# 👨‍🏫 Tutor Details & Pricing\n- Languages: English & Arabic\n- Class Type: Both, Group classes & one-on-one\n- Class duration: 1 hour 30 minutes \n- Monthly Schedule: 8 classes/ month\n- Price per Month (USD) for one-on-one classes: 32$\n- Price per Month (USD) for Group classes: 16$\n- Time zone: GMT2+\n\nWant to talk to the available tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor```\n\n```Student Testimonials:```\n-# @mazenez(a2 student): \"5/5 you explain well\"\n-# @holaamigosmestefano(international maths student): \"You explained it so well\" \"I will definitely be messaging you for tutoring in as and a level\"\n-# And many other positive ratings\n\n\n```💳 Payment Terms:```\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow ⁠tutors-link-policies throughout the entire process.\n\nOnce you're ready to pay, DM @Tutors Link and you will be guided to the next steps.\nYou can also DM @Tutors Link for any problems or suggestions",
+        "color": "#fffff"
+      },
+      "categoryChannelId": "1429446028503023746",
+      "categoryMessageId": "1483929892474327151",
+      "archivedAt": 1774215232814,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1450096179554553928": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Computer Science",
+        "description": "Subject level : Cambridge IGCSE / O-Level  \nSubject codes: 0478/2210\n\n\n# 👨‍🏫 Tutor Details & Pricing\n- Languages: Urdu & English  \n- Class Type: Both, Group Classes & one-on-one\n- Monthly Schedule: 4 classes/week = 16 classes/month\n- Price per Class (USD) for one-on-one classes: 7.5$\n- Price per Class (USD) for Group classes: 5$\n- Time zone: GMT+5\n\nWant to talk to the avalible tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\nI’m a passionate Computer Science and Math tutor who helps students truly understand concepts instead of memorizing formulas. I break topics down simply, adapt to each student’s pace, and focus on building strong logic, problem-solving skills, and long-term confidence.\n\n```Student Testimonials:```\n-# \"This tutor really helped me with computer science. I was struggling a lot with pseudocode and he taught it in such a way that I went from a D in my mids to an A in my mocks. An absolutely huge level of improvement I must say. I would recommend him to anyone requiring help, especially Computer Science.\"\n\n\n```💳 Payment Terms:  ```\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow ⁠tutors-link-policies throughout the entire process.\n\nOnce you're ready to pay, DM @Tutors Link and you will be guided to the next steps.\nYou can also DM @Tutors Link for any problems or suggestions",
+        "color": "#fffff"
+      },
+      "categoryChannelId": "1429446573636452463",
+      "categoryMessageId": "1483929918193795122",
+      "archivedAt": 1774216740948,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1452743151738556486": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Computer Science",
+        "description": "Subject level : Cambridge IGCSE & Edexcel GCSE\nSubject code(s): 0478\n\n👨‍🏫 Tutor Details & Pricing\nLanguages: English & Arabic\nClass Type: One-on-one\nClass duration: 1 hour\nMonthly Schedule: 12 classes/ month\nPrice per Class: 6$\nTime zone: GMT3+\n\nWant to talk to the available tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\n\nI'm an A Level student (FM, CS, Phys, Math, Chem) and every student I've had has one big advantage: that they can learn from someone who is fresh out of the same exams that they're giving. This combined with notes I write, and my explanation methods are certainly a big factor in enabling efficient teaching and communication.\n\n```Student Testimonials:```\n\n\"tried over 5 different tutors and he was the only one who taught me what i actually needed to know with a great explanation. 5/5\"\nThis tutor \"has certainly improved the way I study, and tackle questions that are difficult. One big positive about him is that he is in the same age group as me and that helps us communicate more efficiently with each other.\"\nAnd more positive feedback...\n\n```💳 Payment Terms:```\n\n\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow⁠ <#1437161364568277013> throughout the entire process.\n\nOnce you're ready to pay, DM <@1442933613728497746> and you will be guided to the next steps.\nYou can also DM <@1442933613728497746> for any problems or suggestions",
+        "color": "#fffff"
+      },
+      "tutorId": "708964764516352030",
+      "categoryChannelId": "1429446573636452463",
+      "categoryMessageId": "1483929960724041889",
+      "archivedAt": 1774216760596,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1464205626501763095": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Accounting",
+        "description": "Subject Level: IGCSE/GCSE\nSubject codes: 0452 and equivalents\n\n#  👨‍🏫 Tutor Details & Pricing\n\n\nLanguages: English and Urdu\nClass Type: Both One-on-one and Group Classes\nClass Duration: 1 Hour\nMonthly Schedule: 4 classes/week = 16 classes/month\nPrice per Class (USD) for Group classes: $7\nPrice per Class for One-on-one Classes: 10\nTime zone: GMT5+\n\nWant to talk to the available tutors for this subject?\n\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\nI am a CA finalist, working at one of big 4 firms in Pakistan, with a teaching experience of 4 years. Accounting doesn't require learning for hours instead you just need to learn concepts and principles that are interconnected.\n\n```Student Testimonials:```\n\n\n```💳 Payment Terms:  ```\n100% upfront before classes begin\nYou'll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow <#1437161364568277013> throughout the entire process.\n\nOnce you're ready to pay, DM <@1442933613728497746> and you will be guided to the next steps.\nYou can also DM <@1442933613728497746> for any problems or suggestions",
+        "color": "#fffff"
+      },
+      "categoryChannelId": "1429425391378104320",
+      "categoryMessageId": "1483930025723035723",
+      "archivedAt": 1774216774852,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1469179649060901109": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Biology",
+        "description": "**Level:** IGCSE/GCSE\n**Price per class:** $7\n**Timezone:** GMT+8\n**Languages:** English and Fillipino\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "587448312353914906",
+      "level": "igcse",
+      "categoryChannelId": "1429425639965986887",
+      "categoryMessageId": "1483930071608852753",
+      "fullDetails": {
+        "subjectLevel": "IGCSE/GCSE",
+        "subjectCodes": "0610",
+        "languages": "English and Fillipino",
+        "classType": "one-on-one",
+        "classDuration": "1 Hour",
+        "monthlySchedule": "4 classes/week = 16 classes/month",
+        "price": "20",
+        "timezone": "GMT+8",
+        "tutorMessage": "Student Testimonials:",
+        "testimonials": "Payment Terms: 100% upfront before classes begin",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774216816759,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1483929453024382986": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Add Maths",
+        "description": "**Price (Group):** $n/a\n**Price (1-on-1):** $$100 usd/hr\n**Timezone:** GST\n**Languages:** English, French,and  Mandarin\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": null,
+      "level": "igcse",
+      "adCode": "IG-7",
+      "categoryChannelId": "1429446028503023746",
+      "categoryMessageId": "1483930166903308442",
+      "fullDetails": {
+        "subjectLevel": "igcse/o levels",
+        "subjectCodes": "1122",
+        "languages": "English, French,and  Mandarin",
+        "classType": "one-on-one",
+        "classDuration": "1.5hrs",
+        "monthlySchedule": "3 classes/week = 12 classes/month",
+        "price": "n/a",
+        "price1on1": "$100 usd/hr",
+        "timezone": "GST",
+        "tutorMessage": "",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774216842059,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1482097921192231053": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "AS/AL Accounting",
+        "description": "**Level:** beginner\n**Price:** $1\n**Timezone:** abc3\n**Languages:** japanese\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": null,
+      "level": "language",
+      "adCode": "Lang-1",
+      "categoryChannelId": "1432698735971926016",
+      "categoryMessageId": "1483930123639062579",
+      "fullDetails": {
+        "subjectLevel": "beginner",
+        "subjectCodes": "0",
+        "languages": "japanese",
+        "classType": "oneonone",
+        "classDuration": "15mins",
+        "monthlySchedule": "2 classes/week = 8 classes/month",
+        "price": "1",
+        "timezone": "abc3",
+        "tutorMessage": "ohio guzaimas",
+        "testimonials": "onii channn dai ski",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774216857441,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1482143149550731264": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "University Chemistry",
+        "description": "**Price (Group):** $Price per Class (USD) for 1-on-1 classes:\n**Price (1-on-1):** $Time zone:\n**Languages:** Class Type:\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": null,
+      "level": "university",
+      "adCode": "Uni-2",
+      "categoryChannelId": "1429425557648707614",
+      "categoryMessageId": "1483930131021037680",
+      "fullDetails": {
+        "subjectLevel": "Subject codes:",
+        "subjectCodes": "",
+        "languages": "Class Type:",
+        "classType": "Class Duration:",
+        "classDuration": "Classes/week:",
+        "monthlySchedule": "Classes/month: classes/week = Price per Class (USD) for Group classes: classes/month",
+        "price": "Price per Class (USD) for 1-on-1 classes:",
+        "price1on1": "Time zone:",
+        "timezone": "",
+        "tutorMessage": "Student Testimonials:",
+        "testimonials": "Payment Terms: 100% upfront before classes begin",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774216875575,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1483647782094114938": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Chemistry",
+        "description": "Click \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "683383508118405227",
+      "level": "igcse",
+      "adCode": "IG-5",
+      "categoryChannelId": "1429425557648707614",
+      "categoryMessageId": "1483930139661435022",
+      "fullDetails": {
+        "subjectLevel": "NA",
+        "subjectCodes": "5079/0620",
+        "languages": "NA",
+        "classType": "NA",
+        "classDuration": "NA",
+        "monthlySchedule": "NA",
+        "price": "",
+        "price1on1": "",
+        "timezone": "NA",
+        "tutorMessage": "",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774216894970,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1483648243849105488": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "AS/AL Biology",
+        "description": "Click \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "683383508118405227",
+      "level": "a_level",
+      "adCode": "AL-1",
+      "categoryChannelId": "1432698769966764062",
+      "categoryMessageId": "1483930148880384142",
+      "fullDetails": {
+        "subjectLevel": "NA",
+        "subjectCodes": "NA",
+        "languages": "NA",
+        "classType": "NA",
+        "classDuration": "NA",
+        "monthlySchedule": "NA",
+        "price": "",
+        "price1on1": "",
+        "timezone": "NA",
+        "tutorMessage": "",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774216905761,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1483648405774270516": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "University Biology",
+        "description": "Click \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "683383508118405227",
+      "level": "university",
+      "adCode": "Uni-3",
+      "categoryChannelId": "1429425639965986887",
+      "categoryMessageId": "1483930156602233013",
+      "fullDetails": {
+        "subjectLevel": "NA",
+        "subjectCodes": "NA",
+        "languages": "NA",
+        "classType": "NA",
+        "classDuration": "NA",
+        "monthlySchedule": "NA",
+        "price": "",
+        "price1on1": "",
+        "timezone": "NA",
+        "tutorMessage": "",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774216922787,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1453372541291860049": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "University Biology",
+        "description": "Subject Level: University\nSubject codes: NA\n\n\n#  👨‍🏫 Tutor Details & Pricing\nLanguages: English\nClass Type: Both; One-on-one & Group Classes\nClass Duration: 1 hour\nMonthly Schedule: 3 classes/week = 12 classes/month\nPrice per Class (USD) for Group classes: 5$\nTime zone: GMT-5\n\nWant to talk to the avalible tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\n\"I am a Doctor of Physical Therapy with a strong background in Biology and Anatomy & Physiology. I have several years of tutoring and teaching experience supporting undergraduate students. I focus on clear explanations, real-world application, and building student confidence to achieve academic success.\"\n\n```Student Testimonials:```\n\n\n```💳 Payment Terms:  ```\n\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow ⁠<#1437161364568277013> throughout the entire process.\n\nOnce you're ready to pay, DM <@1442933613728497746> and you will be guided to the next steps.\nYou can also DM <@1442933613728497746> for any problems or suggestions",
+        "color": "#fffff"
+      },
+      "tutorId": "1144296651272503296",
+      "categoryChannelId": "1429425639965986887",
+      "categoryMessageId": "1483929976750342235",
+      "archivedAt": 1774229097418,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1467454019525152922": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "Quran",
+        "description": "**Price:** 5-6 USD/class\n**Timezone:** \n**Languages:** English & Arabic\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "1303146036612562974",
+      "level": "other",
+      "categoryChannelId": "1458552927454105832",
+      "categoryMessageId": "1467454022062440489",
+      "fullDetails": {
+        "subjectLevel": "",
+        "subjectCodes": "",
+        "languages": "English & Arabic",
+        "classType": "Both one-on-one & Group Classes",
+        "classDuration": "1 Hour",
+        "monthlySchedule": "4 classes/week = 16 classes/month",
+        "price": "Time zone:",
+        "timezone": "",
+        "tutorMessage": "Student Testimonials:",
+        "testimonials": "Payment Terms: 100% upfront before classes begin",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774229422697,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1485782552756093031": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Arabic",
+        "description": "Click \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": null,
+      "level": "language",
+      "adCode": "Lang-2",
+      "categoryChannelId": "1429496916856672417",
+      "categoryMessageId": "1485782556484829194",
+      "fullDetails": {
+        "subjectLevel": "NA",
+        "subjectCodes": "test",
+        "languages": "NA",
+        "classType": "NA",
+        "classDuration": "NA",
+        "monthlySchedule": "test ad classes/month",
+        "price": "",
+        "price1on1": "",
+        "timezone": "NA",
+        "tutorMessage": "ad is a test",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774308597130,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1485783046450974781": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "Lang Arabic",
+        "description": "Click \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": null,
+      "level": "language",
+      "adCode": "Lang-3",
+      "categoryChannelId": "1485783049949155358",
+      "categoryMessageId": "1485783053698596954",
+      "fullDetails": {
+        "subjectLevel": "NA",
+        "subjectCodes": "test ad",
+        "languages": "NA",
+        "classType": "NA",
+        "classDuration": "NA",
+        "monthlySchedule": "test classes/month",
+        "price": "",
+        "price1on1": "",
+        "timezone": "NA",
+        "tutorMessage": "",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774308740568,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1485783573083721788": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "Arabic",
+        "description": "Click \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": null,
+      "level": "language",
+      "adCode": "Lang-4",
+      "categoryChannelId": "1485783575730061512",
+      "categoryMessageId": "1485783578070745148",
+      "fullDetails": {
+        "subjectLevel": "test",
+        "subjectCodes": "NA",
+        "languages": "NA",
+        "classType": "NA",
+        "classDuration": "test",
+        "monthlySchedule": "NA",
+        "price": "",
+        "price1on1": "",
+        "timezone": "NA",
+        "tutorMessage": "",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774308838749,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1486122372271440033": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "University Biology",
+        "description": "Click \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": null,
+      "level": "university",
+      "adCode": "Uni-6",
+      "categoryChannelId": "1485449157614239755",
+      "categoryMessageId": "1486122376759345212",
+      "fullDetails": {
+        "subjectLevel": "test ad",
+        "subjectCodes": "NA",
+        "languages": "NA",
+        "classType": "NA",
+        "classDuration": "NA",
+        "monthlySchedule": "tes5 classes/month",
+        "price": "",
+        "price1on1": "",
+        "timezone": "NA",
+        "tutorMessage": "",
+        "testimonials": "test ad",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774389623953,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
     }
   },
   "defaultEmbedColor": "#fffff",
@@ -1175,14 +1673,15 @@
       "tag": "nasgee200"
     },
     "873095080938975232": {
-      "addedAt": null,
+      "id": "<@873095080938975232>",
+      "addedAt": 1773236261975,
       "students": [],
       "reviews": [],
       "rating": {
         "count": 0,
         "avg": 0
       },
-      "notes": "this tutor is the owner, hes dumb and has no students",
+      "notes": "",
       "username": "isofusie",
       "tag": "isofusie"
     },
@@ -1197,16 +1696,6 @@
       "notes": "",
       "username": "scrapicoco23",
       "tag": "scrapicoco23"
-    },
-    "<@873095080938975232>": {
-      "addedAt": 1773236261975,
-      "students": [],
-      "reviews": [],
-      "rating": {
-        "count": 0,
-        "avg": 0
-      },
-      "notes": ""
     },
     "683383508118405227": {
       "addedAt": 1773339768435,
@@ -1231,6 +1720,16 @@
       "notes": "",
       "username": "highonwater._.",
       "tag": "highonwater._."
+    },
+    "<@873095080938975232>": {
+      "addedAt": null,
+      "students": [],
+      "reviews": [],
+      "rating": {
+        "count": 0,
+        "avg": 0
+      },
+      "notes": ""
     }
   },
   "studentAssignments": {
@@ -1274,8 +1773,8 @@
       "lastBump": 1768549507251
     },
     "873095080938975232": {
-      "count": 258,
-      "lastBump": 1774045392502
+      "count": 275,
+      "lastBump": 1774453523403
     },
     "1306942453479374889": {
       "count": 27,
@@ -1286,8 +1785,8 @@
       "lastBump": 1770018187571
     },
     "1330131891973656639": {
-      "count": 68,
-      "lastBump": 1773122184065
+      "count": 69,
+      "lastBump": 1774242157490
     },
     "1330187030289842239": {
       "count": 1,
@@ -1306,8 +1805,8 @@
       "lastBump": 1771680390423
     },
     "984470340149338182": {
-      "count": 65,
-      "lastBump": 1774052630005
+      "count": 83,
+      "lastBump": 1774433599145
     },
     "1294999826588766276": {
       "count": 4,
@@ -1336,8 +1835,7 @@
         "tutor_application": "1482618658483343401"
       },
       "1294999826588766276": {},
-      "984470340149338182": {},
-      "873095080938975232": {}
+      "984470340149338182": {}
     },
     "byChannel": {
       "1445545473917194372": {
@@ -1737,30 +2235,14 @@
           }
         ],
         "createdAt": 1773825324316
-      },
-      "873095080938975232": {
-        "messages": [
-          {
-            "text": "e",
-            "attachments": [],
-            "at": 1773849749482,
-            "messageId": "1483858140033319003"
-          },
-          {
-            "text": "terry makki",
-            "attachments": [],
-            "at": 1773849760783,
-            "messageId": "1483858187156324585"
-          }
-        ],
-        "createdAt": 1773849749482
       }
     },
     "nextId": 66,
     "nextId_A": 41,
     "nextId_C": 3,
-    "nextId_S": 4,
-    "nextId_P": 1
+    "nextId_S": 5,
+    "nextId_P": 2,
+    "_helpers": {}
   },
   "_tempCreateAd": {
     "1448007595871830127": {
