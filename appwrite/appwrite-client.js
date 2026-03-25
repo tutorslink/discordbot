@@ -198,6 +198,32 @@ async function loadArrayCollection(collectionId) {
   return docs.map(doc => safeJSON(doc.data)).filter(v => v !== null);
 }
 
+/**
+ * Sync tutor ads (db.createAds) into the public `ads` collection.
+ *
+ * This repo's internal ads format is stored in `db.createAds` keyed by the
+ * Discord messageId. The Appwrite `ads` collection in your project is
+ * website-facing and uses explicit fields (title/body/status/Source/...).
+ */
+async function syncAdsCollection(createAds) {
+  if (!createAds || typeof createAds !== 'object') return;
+  for (const [messageId, ad] of Object.entries(createAds)) {
+    const title = String(ad?.embed?.title || ad?.title || '').trim() || 'Untitled';
+    const body = String(ad?.embed?.description || ad?.body || '').trim() || '(no description)';
+    const createdBy = ad?.tutorId ? String(ad.tutorId) : null;
+    const status = String(ad?.status || 'active');
+
+    await upsertDoc(COLLECTION_IDS.ads, String(messageId), {
+      title,
+      body,
+      status,
+      Source: JSON.stringify({ origin: 'discordbot', messageId, ad }),
+      messageId: String(messageId),
+      createdBy,
+    });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public API: syncDB / loadDB
 // ---------------------------------------------------------------------------
@@ -210,6 +236,9 @@ export async function syncDB(db) {
   if (!getDB()) return; // not configured
   try {
     await Promise.all([
+      // Ads (public website-facing collection)
+      syncAdsCollection(db.createAds),
+
       // Single-document collections
       syncSingleDoc(COLLECTION_IDS.subjects,      'all',    db.subjects),
       syncSingleDoc(COLLECTION_IDS.subjectLevels, 'all',    db.subjectLevels),

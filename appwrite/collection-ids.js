@@ -16,6 +16,10 @@
 export const DB_ID = process.env.APPWRITE_DB_ID || 'tutorslink';
 
 export const COLLECTION_IDS = {
+  // Ads (shared with website)
+  // NOTE: User requested collection id "ads"
+  ads:                 'ads',
+
   // Synced with Website
   subjects:            'discordSubjects',
   subjectLevels:       'discordSubjectLevels',

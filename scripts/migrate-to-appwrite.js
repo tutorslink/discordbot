@@ -166,6 +166,41 @@ async function migrateArray(label, collectionId, arr) {
   console.log(`\n   → ${arr.length} documents`);
 }
 
+async function migrateAdsFromCreateAds(label, collectionId, createAds) {
+  console.log(`\n📣 ${label}`);
+  if (!createAds || typeof createAds !== 'object') {
+    console.log('   (empty – skipping)');
+    return;
+  }
+  const entries = Object.entries(createAds);
+  if (entries.length === 0) {
+    console.log('   (empty – skipping)');
+    return;
+  }
+
+  let done = 0;
+  for (const [messageId, ad] of entries) {
+    // Map Discord-bot ad shape -> website-facing schema
+    const title = String(ad?.embed?.title || ad?.title || '').trim() || 'Untitled';
+    const body = String(ad?.embed?.description || ad?.body || '').trim() || '(no description)';
+    const createdBy = ad?.tutorId ? String(ad.tutorId) : null;
+    const status = String(ad?.status || 'active');
+
+    await upsertDoc(collectionId, String(messageId), {
+      title,
+      body,
+      status,
+      Source: JSON.stringify({ origin: 'discordbot', messageId, ad }),
+      messageId: String(messageId),
+      createdBy,
+    });
+
+    done++;
+    progress(label, done, entries.length);
+  }
+  console.log(`\n   → ${entries.length} ads`);
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -235,6 +270,10 @@ async function main() {
   await migrateMap('_tempTutorAdd', COLLECTION_IDS.tempTutorAdd, db._tempTutorAdd);
 
   await migrateMap('_tempTutorRemove', COLLECTION_IDS.tempTutorRemove, db._tempTutorRemove);
+
+  // ── Ads ──────────────────────────────────────────────────────────────────
+  // Ads live in db.createAds as a map keyed by Discord messageId.
+  await migrateAdsFromCreateAds('ads', COLLECTION_IDS.ads, db.createAds);
 
   // ── Summary ───────────────────────────────────────────────────────────────
 

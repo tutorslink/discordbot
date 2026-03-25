@@ -138,6 +138,24 @@ const SERVER_ONLY_PERMS = [];   // rely on API-key-level access; no public read
  * cross-app lookups (e.g. the website can filter tutorProfiles by tutorId).
  */
 const COLLECTIONS = [
+  // ── Ads (shared with Website) ─────────────────────────────────────────────
+
+  {
+    id: COLLECTION_IDS.ads,
+    name: 'Ads',
+    permissions: PUBLIC_READ_PERMS,
+    // Website-facing ads collection (already exists in your Appwrite project).
+    // One document per ad; documentId = messageId from Discord.
+    attrs: async (cid) => {
+      await createStringAttr(cid, 'title', 256, true);
+      await createLongtextAttr(cid, 'body', true);
+      await createStringAttr(cid, 'status', 32, false);
+      await createLongtextAttr(cid, 'Source', true);
+      await createLongtextAttr(cid, 'messageId', false);
+      await createLongtextAttr(cid, 'createdBy', false);
+    },
+  },
+
   // ── Synced with Website ──────────────────────────────────────────────────
 
   {
