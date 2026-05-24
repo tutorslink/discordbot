@@ -40,7 +40,6 @@ const {
   PermissionsBitField,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
-  LabelBuilder,
   AttachmentBuilder
 } = pkg;
 
@@ -190,6 +189,235 @@ function clampLabel(s, max = 45) {
   if (typeof s !== 'string') return '';
   if (s.length <= max) return s;
   return s.slice(0, Math.max(0, max - 3)) + '...';
+}
+
+const PAGINATED_PREV_VALUE = '__page_prev__';
+const PAGINATED_NEXT_VALUE = '__page_next__';
+
+function compareStringsCaseInsensitive(a, b) {
+  return String(a || '').toLowerCase().localeCompare(String(b || '').toLowerCase());
+}
+
+function sortStringsCaseInsensitive(values) {
+  return [...values].sort(compareStringsCaseInsensitive);
+}
+
+function parsePagedCustomId(customId) {
+  const match = String(customId || '').match(/^(.*)\|page\|(\d+)$/);
+  if (!match) return { baseCustomId: customId, page: 0 };
+  return { baseCustomId: match[1], page: Number.parseInt(match[2], 10) || 0 };
+}
+
+function isPagedNavigationValue(value) {
+  return value === PAGINATED_PREV_VALUE || value === PAGINATED_NEXT_VALUE;
+}
+
+function getPagedNavigationTarget(currentPage, value) {
+  return value === PAGINATED_PREV_VALUE ? Math.max(0, currentPage - 1) : currentPage + 1;
+}
+
+function buildPaginatedSelectMenu({ baseCustomId, placeholder, options, page = 0, required = false }) {
+  const rawOptions = Array.isArray(options) ? options : [];
+  const needsPagination = rawOptions.length > 25;
+  const pageSize = needsPagination ? 23 : 25;
+  const maxPage = Math.max(0, Math.ceil(rawOptions.length / pageSize) - 1);
+  const safePage = Math.min(Math.max(0, page), maxPage);
+  const pageOptions = rawOptions.slice(safePage * pageSize, (safePage + 1) * pageSize).map(opt => ({ ...opt }));
+  if (needsPagination && safePage > 0) {
+    pageOptions.unshift({
+      label: '⬅ Previous page',
+      value: PAGINATED_PREV_VALUE,
+      description: `Go to page ${safePage} of ${maxPage + 1}`.substring(0, 100)
+    });
+  }
+  if (needsPagination && safePage < maxPage) {
+    pageOptions.push({
+      label: 'Next page ➡',
+      value: PAGINATED_NEXT_VALUE,
+      description: `Go to page ${safePage + 2} of ${maxPage + 1}`.substring(0, 100)
+    });
+  }
+  const finalPlaceholder = needsPagination ? `${placeholder} • Page ${safePage + 1}/${maxPage + 1}` : placeholder;
+  return new StringSelectMenuBuilder()
+    .setCustomId(`${baseCustomId}|page|${safePage}`)
+    .setPlaceholder(finalPlaceholder)
+    .addOptions(pageOptions)
+    .setRequired(required);
+}
+
+function getSubjectsForLevel(levelKey, { fallbackToAll = true } = {}) {
+  const allSubjects = sortStringsCaseInsensitive(db.subjects || []);
+  if (!levelKey) return allSubjects;
+  const filteredSubjects = allSubjects.filter(subject => {
+    const storedLevel = db.subjectLevels && db.subjectLevels[subject];
+    const effectiveLevel = storedLevel || detectLevelFromSubject(subject) || 'other';
+    return effectiveLevel === levelKey;
+  });
+  return filteredSubjects.length > 0 || !fallbackToAll ? filteredSubjects : allSubjects;
+}
+
+function resolveCanonicalSubject(rawInput, { levelKey = null, fallbackToAll = true } = {}) {
+  const input = String(rawInput || '').trim();
+  if (!input) return { subject: null, suggestions: [] };
+  const pools = [];
+  const levelSubjects = getSubjectsForLevel(levelKey, { fallbackToAll });
+  pools.push(levelSubjects);
+  const allSubjects = sortStringsCaseInsensitive(db.subjects || []);
+  if (fallbackToAll && levelKey && levelSubjects !== allSubjects) pools.push(allSubjects);
+
+  for (const subjects of pools) {
+    const exact = subjects.find(subject => subject.toLowerCase() === input.toLowerCase());
+    if (exact) return { subject: exact, suggestions: [] };
+    const startsWith = subjects.filter(subject => subject.toLowerCase().startsWith(input.toLowerCase()));
+    if (startsWith.length === 1) return { subject: startsWith[0], suggestions: [] };
+    const includes = subjects.filter(subject => subject.toLowerCase().includes(input.toLowerCase()));
+    if (includes.length === 1) return { subject: includes[0], suggestions: [] };
+    if (startsWith.length > 0) return { subject: null, suggestions: startsWith.slice(0, 5) };
+    if (includes.length > 0) return { subject: null, suggestions: includes.slice(0, 5) };
+  }
+
+  return { subject: null, suggestions: [] };
+}
+
+function formatSubjectResolutionError(rawInput, suggestions = []) {
+  const base = `Could not match subject "${String(rawInput || '').trim()}".`;
+  if (!suggestions.length) return `${base} Please type the subject name exactly as it appears in \`/subject list\`.`;
+  return `${base} Did you mean: ${suggestions.join(', ')}?`;
+}
+
+function getAllTutorIds() {
+  return sortStringsCaseInsensitive(Array.from(new Set(Object.values(db.subjectTutors || {}).flat().map(id => String(id)))));
+}
+
+function resolveTutorInput(rawInput) {
+  const input = String(rawInput || '').trim();
+  if (!input) return { tutorId: null, suggestions: [] };
+  const mentionMatch = input.match(/^<@!?(\d+)>$/);
+  const byId = mentionMatch ? mentionMatch[1] : input;
+  const allTutorIds = getAllTutorIds();
+  if (allTutorIds.includes(byId)) return { tutorId: byId, suggestions: [] };
+
+  const tutorRecords = allTutorIds.map(id => {
+    const profile = db.tutorProfiles?.[id] || {};
+    const username = String(profile.username || '').trim();
+    const tag = String(profile.tag || '').trim();
+    return { id, username, tag };
+  });
+  const normalized = input.toLowerCase();
+  const exact = tutorRecords.find(record => record.username.toLowerCase() === normalized || record.tag.toLowerCase() === normalized);
+  if (exact) return { tutorId: exact.id, suggestions: [] };
+  const startsWith = tutorRecords.filter(record => record.username.toLowerCase().startsWith(normalized) || record.tag.toLowerCase().startsWith(normalized));
+  if (startsWith.length === 1) return { tutorId: startsWith[0].id, suggestions: [] };
+  const includes = tutorRecords.filter(record => record.username.toLowerCase().includes(normalized) || record.tag.toLowerCase().includes(normalized));
+  if (includes.length === 1) return { tutorId: includes[0].id, suggestions: [] };
+  const suggestions = (startsWith.length ? startsWith : includes)
+    .slice(0, 5)
+    .map(record => record.username || record.tag || record.id);
+  return { tutorId: null, suggestions };
+}
+
+function formatTutorResolutionError(rawInput, suggestions = []) {
+  const base = `Could not match tutor "${String(rawInput || '').trim()}".`;
+  if (!suggestions.length) return `${base} Use a mention, user ID, username, or tag for a tutor already in the database.`;
+  return `${base} Did you mean: ${suggestions.join(', ')}?`;
+}
+
+function buildSubjectSelectOptions(subjects) {
+  return sortStringsCaseInsensitive(subjects || []).map(subject => ({
+    label: subject.substring(0, 100),
+    value: subject.substring(0, 100),
+    description: `Subject: ${subject}`.substring(0, 100)
+  }));
+}
+
+async function buildTutorSelectOptions(guild, tutorIds, { includeNoneOption = false, includeAdCodes = false, noneLabel = 'None', noneDescription = 'No selection' } = {}) {
+  const options = [];
+  if (includeNoneOption) {
+    options.push({
+      label: noneLabel,
+      value: 'none',
+      description: noneDescription
+    });
+  }
+  for (const tid of tutorIds) {
+    let label = `User ID: ${tid}`;
+    let description = '';
+    try {
+      const member = guild ? await guild.members.fetch(tid).catch(() => null) : null;
+      if (member?.user) {
+        label = member.user.username;
+        description = `(${member.user.tag})`;
+      } else {
+        const user = await client.users.fetch(tid).catch(() => null);
+        if (user) {
+          label = user.username;
+          description = `(${user.tag})`;
+        } else if (db.tutorProfiles?.[tid]?.username) {
+          label = db.tutorProfiles[tid].username;
+          if (db.tutorProfiles[tid].tag) description = `(${db.tutorProfiles[tid].tag})`;
+        }
+      }
+    } catch (e) {}
+    if (includeAdCodes) {
+      const tutorAdCodes = Object.values(db.createAds || {}).filter(ad => ad.tutorId === tid && ad.adCode).map(ad => ad.adCode);
+      if (tutorAdCodes.length) description = `${tutorAdCodes.join(', ')}${description ? ' · ' + description : ''}`;
+    }
+    const option = {
+      label: (label || `User ${tid}`).substring(0, 100),
+      value: String(tid).substring(0, 100)
+    };
+    if (description) option.description = description.substring(0, 100);
+    options.push(option);
+  }
+  return options;
+}
+
+async function buildCloseFlowComponents(guild, code, ticket, { tutorPage = 0, subjectPage = 0 } = {}) {
+  const hiredSelect = new StringSelectMenuBuilder()
+    .setCustomId(`close_ticket_select|${code}|hired`)
+    .setPlaceholder('Did the student hire a tutor?')
+    .addOptions([
+      { label: 'No', value: 'no', description: 'Student did not hire a tutor' },
+      { label: 'Yes, hired tutor', value: 'yes', description: 'Student hired a tutor' }
+    ]);
+
+  const tutorSelect = buildPaginatedSelectMenu({
+    baseCustomId: `close_ticket_select|${code}|tutor`,
+    placeholder: 'Choose tutor (if hired)',
+    options: await buildTutorSelectOptions(guild, getAllTutorIds(), { includeNoneOption: true, noneLabel: 'No tutor selected', noneDescription: 'Leave tutor unassigned for this closeout' }),
+    page: tutorPage
+  });
+
+  const selectedTutorId = ticket?._closeFlowTemp?.hiredTutorId;
+  const tutorSubjects = selectedTutorId && selectedTutorId !== 'none'
+    ? Object.entries(db.subjectTutors || {})
+        .filter(([, tutors]) => tutors.includes(selectedTutorId))
+        .map(([subject]) => subject)
+    : null;
+  const baseSubjectOptions = tutorSubjects && tutorSubjects.length > 0
+    ? buildSubjectSelectOptions(tutorSubjects)
+    : buildSubjectSelectOptions(db.subjects || []);
+  const subjectOptions = [];
+  if (!selectedTutorId || selectedTutorId === 'none' || (tutorSubjects && tutorSubjects.includes(ticket.subject))) {
+    subjectOptions.push({ label: 'Use ticket subject', value: 'ticket_subject', description: `Ticket subject: ${ticket.subject}`.substring(0, 100) });
+  }
+  subjectOptions.push(...baseSubjectOptions);
+
+  const subjectSelect = buildPaginatedSelectMenu({
+    baseCustomId: `close_ticket_select|${code}|subject`,
+    placeholder: tutorSubjects && tutorSubjects.length > 0 ? 'Choose subject this tutor teaches' : 'Choose subject for assignment (if hired)',
+    options: subjectOptions,
+    page: subjectPage
+  });
+
+  return [
+    new ActionRowBuilder().addComponents(hiredSelect),
+    new ActionRowBuilder().addComponents(tutorSelect),
+    new ActionRowBuilder().addComponents(subjectSelect),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`open_close_modal|${code}`).setLabel('Provide reason and close').setStyle(ButtonStyle.Danger)
+    )
+  ];
 }
 
 function normalizeCreateAdLevelKey(raw) {
@@ -999,12 +1227,11 @@ async function revokeTutorAccess(userId) {
 
 // register slash commands
 async function registerCommands() {
-  const subjectChoices = db.subjects.slice(0, 25).map(s => ({ name: s, value: s }));
   const restCommands = [
     {
       name: 'enquire',
       description: 'Create an enquiry ticket, choose a subject',
-      options: [{ name: 'subject', description: 'Choose the subject', type: 3, required: true, choices: subjectChoices }]
+      options: [{ name: 'subject', description: 'Choose the subject', type: 3, required: true, autocomplete: true }]
     },
     {
       name: 'reply',
@@ -1178,7 +1405,18 @@ client.on('interactionCreate', async (interaction) => {
       return; // Let demo.js handle these
     }
 
-    // Autocomplete handler for /tutor subject option
+    // Autocomplete handlers
+    if (interaction.isAutocomplete() && interaction.commandName === 'enquire') {
+      const focused = interaction.options.getFocused();
+      const query = String(focused || '').toLowerCase();
+      const choices = sortStringsCaseInsensitive(db.subjects || [])
+        .filter(subject => !query || subject.toLowerCase().includes(query))
+        .slice(0, 25)
+        .map(subject => ({ name: subject, value: subject }));
+      await interaction.respond(choices).catch(() => {});
+      return;
+    }
+
     if (interaction.isAutocomplete() && interaction.commandName === 'tutor') {
       const focused = interaction.options.getFocused();
       const action = interaction.options.getString('action');
@@ -1196,7 +1434,7 @@ client.on('interactionCreate', async (interaction) => {
           .map(([s]) => s);
       }
       const query = String(focused || '').toLowerCase();
-      const choices = subjects
+      const choices = sortStringsCaseInsensitive(subjects)
         .filter(s => !query || s.toLowerCase().includes(query))
         .slice(0, 25)
         .map(s => ({ name: s, value: s }));
@@ -1366,52 +1604,25 @@ client.on('interactionCreate', async (interaction) => {
 
         // Build the modal now using cached/db usernames (fast)
         try {
-          // Build tutor options for dropdown
-          const allTutorIds = Array.from(new Set(Object.values(db.subjectTutors || {}).flat()));
-          const tutorOptions = [];
-          tutorOptions.push(new StringSelectMenuOptionBuilder().setLabel('None - General Ad').setValue('none').setDescription('No specific tutor'));
-          for (const tid of allTutorIds.slice(0, 24)) {
-            let label = `User ID: ${tid}`;
-            let description = '';
-            try {
-              const cachedMember = interaction.guild?.members?.cache?.get(tid) || null;
-              const user = cachedMember?.user || client.users.cache.get(tid) || null;
-              if (user) {
-                label = user.username;
-                description = `(${user.tag})`;
-              } else if (db.tutorProfiles && db.tutorProfiles[tid] && db.tutorProfiles[tid].username) {
-                label = db.tutorProfiles[tid].username;
-                if (db.tutorProfiles[tid].tag) description = `(${db.tutorProfiles[tid].tag})`;
-              }
-            } catch (e) {}
-            const opt = new StringSelectMenuOptionBuilder().setLabel(clampLabel(label, 100)).setValue(String(tid).substring(0, 100));
-            if (description && description.trim()) opt.setDescription(clampLabel(description, 50));
-            tutorOptions.push(opt);
-          }
-
-          // Build subject options filtered by the selected level and sorted alphabetically.
-          // Subjects without a stored level entry fall back to detectLevelFromSubject.
-          const allSubjects = db.subjects || [];
-          const filteredSubjects = allSubjects.filter(s => {
-            const storedLevel = db.subjectLevels && db.subjectLevels[s];
-            const effectiveLevel = storedLevel || detectLevelFromSubject(s) || 'other';
-            return effectiveLevel === levelKey;
-          });
-          // If no filtered subjects found (e.g. no subjects assigned to this level yet),
-          // fall back to showing all subjects so the modal remains usable.
-          const subjectsForLevel = filteredSubjects.length > 0 ? filteredSubjects : allSubjects;
-          const subjectOptions = subjectsForLevel
-            .slice()
-            .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
-            .slice(0, 25)
-            .map(s => new StringSelectMenuOptionBuilder().setLabel(clampLabel(s, 100)).setValue(s.substring(0, 100)).setDescription(clampLabel(`Select ${s}`, 50)));
-          if (subjectOptions.length === 0) {
+          const subjectsForLevel = getSubjectsForLevel(levelKey);
+          if (subjectsForLevel.length === 0) {
             return interaction.reply({ content: 'No subjects available for this level. Add subjects first with `/subject add`.', ephemeral: true }).catch(() => {});
           }
-          const subjectSelect = new StringSelectMenuBuilder().setCustomId('ad_subject').setPlaceholder('Select a subject').addOptions(subjectOptions).setRequired(true);
-          const subjectLabel = new LabelBuilder().setLabel(clampLabel('Subject')).setStringSelectMenuComponent(subjectSelect);
-          const tutorSelect = new StringSelectMenuBuilder().setCustomId('ad_tutor').setPlaceholder('Select a tutor (optional)').addOptions(tutorOptions);
-          const tutorLabel = new LabelBuilder().setLabel(clampLabel('Tutor (Optional)')).setStringSelectMenuComponent(tutorSelect);
+          const subjectExamples = subjectsForLevel.slice(0, 3).join(', ');
+          const prefilledSubject = resolveCanonicalSubject(subjectKey, { levelKey, fallbackToAll: true }).subject || subjectKey || '';
+          const subjectInput = new TextInputBuilder()
+            .setCustomId('ad_subject')
+            .setLabel(clampLabel('Subject'))
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setPlaceholder(clampLabel(subjectExamples ? `Type a subject, e.g. ${subjectExamples}` : 'Type the subject name', 100))
+            .setValue(String(prefilledSubject || '').substring(0, 100));
+          const tutorInput = new TextInputBuilder()
+            .setCustomId('ad_tutor')
+            .setLabel(clampLabel('Tutor (Optional)'))
+            .setStyle(TextInputStyle.Short)
+            .setRequired(false)
+            .setPlaceholder('Mention, user ID, username, or tag');
 
           const subjectDetailsInput = new TextInputBuilder().setCustomId('ad_subject_details').setLabel(clampLabel('Subject Level & Codes')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Subject Level: \nSubject codes: ', 1000));
           const tutorDetailsInput = new TextInputBuilder().setCustomId('ad_tutor_details').setLabel(clampLabel('Tutor Details & Pricing')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Languages: \nClass Type: \nClass Duration: \nClasses/week: \nClasses/month: \nPrice per Class (USD) for Group classes: \nPrice per Class (USD) for 1-on-1 classes: \nTime zone:', 1000));
@@ -1421,8 +1632,8 @@ client.on('interactionCreate', async (interaction) => {
             .setCustomId(`createad_modal|${interaction.id}|${levelKey}|${origin || ''}|${originChannel || ''}|${subjectKey}`)
             .setTitle('Create Ad Details')
             .addComponents(
-              subjectLabel,
-              tutorLabel,
+              new ActionRowBuilder().addComponents(subjectInput),
+              new ActionRowBuilder().addComponents(tutorInput),
               new ActionRowBuilder().addComponents(subjectDetailsInput),
               new ActionRowBuilder().addComponents(tutorDetailsInput),
               new ActionRowBuilder().addComponents(optionalFieldsInput)
@@ -1987,22 +2198,23 @@ client.on('interactionCreate', async (interaction) => {
             // Defer reply immediately to prevent interaction timeout
             await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
-            // Get subject from select menu in modal
-            let subject = '';
-            try {
-                const subjectValues = interaction.fields.getStringSelectValues('ad_subject');
-                subject = subjectValues[0];
-            } catch (e) {
-                return interaction.editReply({ content: 'Subject selection is required.' }).catch(() => {});
+            const subjectInput = interaction.fields.getTextInputValue('ad_subject') || '';
+            const subjectResolution = resolveCanonicalSubject(subjectInput, { levelKey, fallbackToAll: true });
+            const subject = subjectResolution.subject;
+            if (!subject) {
+                return interaction.editReply({ content: formatSubjectResolutionError(subjectInput, subjectResolution.suggestions) }).catch(() => {});
             }
             
-            // Get tutor from select menu in modal
+            // Get tutor from text input in modal
             let selectedTutorId = null;
             try {
-                const tutorValues = interaction.fields.getStringSelectValues('ad_tutor');
-                const tutorValue = tutorValues[0];
-                if (tutorValue && tutorValue !== 'none') {
-                    selectedTutorId = tutorValue;
+                const tutorInput = interaction.fields.getTextInputValue('ad_tutor') || '';
+                if (String(tutorInput || '').trim()) {
+                    const tutorResolution = resolveTutorInput(tutorInput);
+                    if (!tutorResolution.tutorId) {
+                        return interaction.editReply({ content: formatTutorResolutionError(tutorInput, tutorResolution.suggestions) }).catch(() => {});
+                    }
+                    selectedTutorId = tutorResolution.tutorId;
                 }
             } catch (e) { /* optional field may not exist */ }
 
@@ -2269,13 +2481,11 @@ client.on('interactionCreate', async (interaction) => {
         
         const messageText = interaction.fields.getTextInputValue('edit_ad_message') || '';
         
-        // Get subject from select menu in modal
-        let subject = '';
-        try {
-            const subjectValues = interaction.fields.getStringSelectValues('edit_ad_subject');
-            subject = subjectValues[0];
-        } catch (e) {
-            return interaction.editReply({ content: 'Subject selection is required.' }).catch(() => {});
+        const subjectInput = interaction.fields.getTextInputValue('edit_ad_subject') || '';
+        const subjectResolution = resolveCanonicalSubject(subjectInput, { fallbackToAll: true });
+        const subject = subjectResolution.subject;
+        if (!subject) {
+            return interaction.editReply({ content: formatSubjectResolutionError(subjectInput, subjectResolution.suggestions) }).catch(() => {});
         }
 
         // Find the ad data to get the paired message IDs
@@ -2765,7 +2975,8 @@ client.on('interactionCreate', async (interaction) => {
       // Tutor select handler for username-based flows (info / notes / remove)
       if (interaction.customId && interaction.customId.startsWith('tutor_select|')) {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
-        const parts = interaction.customId.split('|');
+        const { baseCustomId, page } = parsePagedCustomId(interaction.customId);
+        const parts = baseCustomId.split('|');
         // customId formats:
         // tutor_select|info
         // tutor_select|notes
@@ -2773,6 +2984,31 @@ client.on('interactionCreate', async (interaction) => {
         const subAction = parts[1];
         const selected = interaction.values && interaction.values[0];
         if (!selected) return interaction.reply({ content: 'No tutor selected.', ephemeral: true }).catch(() => {});
+
+        if (isPagedNavigationValue(selected)) {
+          const targetPage = getPagedNavigationTarget(page, selected);
+          if (subAction === 'info') {
+            const options = await buildTutorSelectOptions(interaction.guild, getAllTutorIds(), { includeAdCodes: true });
+            const select = buildPaginatedSelectMenu({ baseCustomId, placeholder: 'Select a tutor to view info', options, page: targetPage });
+            return interaction.update({ content: 'Select a tutor to view info:', components: [new ActionRowBuilder().addComponents(select)] }).catch(() => {});
+          }
+          if (subAction === 'notes') {
+            const options = await buildTutorSelectOptions(interaction.guild, getAllTutorIds());
+            const select = buildPaginatedSelectMenu({ baseCustomId, placeholder: 'Select a tutor to edit notes', options, page: targetPage });
+            return interaction.update({ content: 'Select a tutor to edit notes:', components: [new ActionRowBuilder().addComponents(select)] }).catch(() => {});
+          }
+          if (subAction === 'edit') {
+            const options = await buildTutorSelectOptions(interaction.guild, getAllTutorIds());
+            const select = buildPaginatedSelectMenu({ baseCustomId, placeholder: 'Select a tutor to edit contact info', options, page: targetPage });
+            return interaction.update({ content: 'Select a tutor to edit their phone number and date of birth:', components: [new ActionRowBuilder().addComponents(select)] }).catch(() => {});
+          }
+          if (subAction === 'remove') {
+            const subj = parts[2];
+            const options = await buildTutorSelectOptions(interaction.guild, (db.subjectTutors[subj] || []).map(id => String(id)));
+            const select = buildPaginatedSelectMenu({ baseCustomId, placeholder: 'Select tutor to remove from subject', options, page: targetPage });
+            return interaction.update({ content: `Select a tutor to remove from ${subj}:`, components: [new ActionRowBuilder().addComponents(select)] }).catch(() => {});
+          }
+        }
 
         if (subAction === 'info') {
           const userid = String(selected);
@@ -2892,7 +3128,8 @@ client.on('interactionCreate', async (interaction) => {
       // Handler for /tutor add select flow: subject and tutor selection
       if (interaction.customId && interaction.customId.startsWith('tutor_add_select|')) {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
-        const parts = interaction.customId.split('|');
+        const { baseCustomId, page } = parsePagedCustomId(interaction.customId);
+        const parts = baseCustomId.split('|');
         const which = parts[1];
         db._tempTutorAdd = db._tempTutorAdd || {};
         const key = interaction.user.id;
@@ -2901,6 +3138,24 @@ client.on('interactionCreate', async (interaction) => {
         if (which === 'subject') {
           const selected = interaction.values && interaction.values[0];
           if (!selected) return interaction.reply({ content: 'No subject selected.', ephemeral: true }).catch(() => {});
+          if (isPagedNavigationValue(selected)) {
+            const targetPage = getPagedNavigationTarget(page, selected);
+            const levelKey = db._tempTutorAdd[key].level || null;
+            const levelLabel = CREATEAD_LEVEL_LABELS[levelKey] || levelKey || 'Selected';
+            const subjectOptions = buildSubjectSelectOptions(getSubjectsForLevel(levelKey));
+            const subjectSelect = buildPaginatedSelectMenu({
+              baseCustomId,
+              placeholder: `Select subject (${levelLabel})`,
+              options: subjectOptions,
+              page: targetPage
+            });
+            const storedUserId = db._tempTutorAdd[key].userid;
+            const tutorPart = storedUserId ? ` for <@${storedUserId}>` : '';
+            return interaction.update({
+              content: `Level **${levelLabel}** selected${tutorPart}. **Step 2:** Select the subject:`,
+              components: [new ActionRowBuilder().addComponents(subjectSelect)]
+            }).catch(() => {});
+          }
           db._tempTutorAdd[key].subject = selected;
           saveDB();
           // If userid already chosen, finalize
@@ -2997,25 +3252,13 @@ client.on('interactionCreate', async (interaction) => {
         saveDB();
 
         const rows = [];
-        // Subject select filtered by selected level
-        const allSubjects = db.subjects || [];
-        const filteredSubjects = allSubjects.filter(s => {
-          const storedLevel = db.subjectLevels && db.subjectLevels[s];
-          const effectiveLevel = storedLevel || detectLevelFromSubject(s) || 'other';
-          return effectiveLevel === levelKey;
-        });
-        const subjectsForLevel = filteredSubjects.length > 0 ? filteredSubjects : allSubjects;
-        const subjOptions = subjectsForLevel
-          .slice()
-          .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
-          .slice(0, 25)
-          .map(s => ({ label: s.substring(0, 100), value: s.substring(0, 100), description: `Subject: ${s}`.substring(0, 50) }));
+        const subjOptions = buildSubjectSelectOptions(getSubjectsForLevel(levelKey));
         if (!subjOptions.length) {
           try { await interaction.update({ content: `No subjects found for **${levelLabel}**. Add subjects first with \`/subject add\`.`, components: [] }); } catch (e) { try { await interaction.reply({ content: `No subjects found for **${levelLabel}**.`, ephemeral: true }); } catch (err) {} }
           return;
         }
         rows.push(new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder().setCustomId('tutor_add_select|subject').setPlaceholder(`Select subject (${levelLabel})`).addOptions(subjOptions)
+          buildPaginatedSelectMenu({ baseCustomId: 'tutor_add_select|subject', placeholder: `Select subject (${levelLabel})`, options: subjOptions })
         ));
 
         // Build tutor display for the message from temp storage
@@ -3031,7 +3274,8 @@ client.on('interactionCreate', async (interaction) => {
       // Handler for /tutor remove select flow: subject and tutor selection
       if (interaction.customId && interaction.customId.startsWith('tutor_remove_select|')) {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
-        const parts = interaction.customId.split('|');
+        const { baseCustomId, page } = parsePagedCustomId(interaction.customId);
+        const parts = baseCustomId.split('|');
         const which = parts[1];
         db._tempTutorRemove = db._tempTutorRemove || {};
         const key = interaction.user.id;
@@ -3040,6 +3284,42 @@ client.on('interactionCreate', async (interaction) => {
         if (which === 'subject') {
           const selected = interaction.values && interaction.values[0];
           if (!selected) return interaction.reply({ content: 'No subject selected.', ephemeral: true }).catch(() => {});
+          if (isPagedNavigationValue(selected)) {
+            const targetPage = getPagedNavigationTarget(page, selected);
+            const storedTutorId = db._tempTutorRemove[key].userid;
+            const subjectOptions = storedTutorId
+              ? buildSubjectSelectOptions(
+                  Object.entries(db.subjectTutors || {})
+                    .filter(([, ids]) => ids.includes(storedTutorId))
+                    .map(([subject]) => subject)
+                )
+              : buildSubjectSelectOptions(db.subjects || []);
+            const subjectSelect = buildPaginatedSelectMenu({
+              baseCustomId,
+              placeholder: 'Select subject to remove tutor from',
+              options: subjectOptions,
+              page: targetPage
+            });
+            if (storedTutorId) {
+              return interaction.update({
+                content: `Select the subject to remove <@${storedTutorId}> from:`,
+                components: [new ActionRowBuilder().addComponents(subjectSelect)]
+              }).catch(() => {});
+            }
+            const tutorSelect = buildPaginatedSelectMenu({
+              baseCustomId: 'tutor_remove_select|tutor',
+              placeholder: 'Select tutor to remove',
+              options: await buildTutorSelectOptions(interaction.guild, getAllTutorIds()),
+              page: 0
+            });
+            return interaction.update({
+              content: 'Select subject and tutor to remove:',
+              components: [
+                new ActionRowBuilder().addComponents(subjectSelect),
+                new ActionRowBuilder().addComponents(tutorSelect)
+              ]
+            }).catch(() => {});
+          }
           db._tempTutorRemove[key].subject = selected;
           saveDB();
           if (db._tempTutorRemove[key].userid) {
@@ -3061,6 +3341,42 @@ client.on('interactionCreate', async (interaction) => {
         if (which === 'tutor') {
           const selected = interaction.values && interaction.values[0];
           if (!selected) return interaction.reply({ content: 'No tutor selected.', ephemeral: true }).catch(() => {});
+          if (isPagedNavigationValue(selected)) {
+            const targetPage = getPagedNavigationTarget(page, selected);
+            const subjectForTutor = parts[2];
+            if (subjectForTutor) {
+              const options = await buildTutorSelectOptions(interaction.guild, (db.subjectTutors[subjectForTutor] || []).map(id => String(id)));
+              const select = buildPaginatedSelectMenu({
+                baseCustomId,
+                placeholder: 'Select tutor to remove from subject',
+                options,
+                page: targetPage
+              });
+              return interaction.update({
+                content: `Select a tutor to remove from ${subjectForTutor}:`,
+                components: [new ActionRowBuilder().addComponents(select)]
+              }).catch(() => {});
+            }
+            const subjectSelect = buildPaginatedSelectMenu({
+              baseCustomId: 'tutor_remove_select|subject',
+              placeholder: 'Select subject to remove tutor from',
+              options: buildSubjectSelectOptions(db.subjects || []),
+              page: 0
+            });
+            const tutorSelect = buildPaginatedSelectMenu({
+              baseCustomId,
+              placeholder: 'Select tutor to remove',
+              options: await buildTutorSelectOptions(interaction.guild, getAllTutorIds()),
+              page: targetPage
+            });
+            return interaction.update({
+              content: 'Select subject and tutor to remove:',
+              components: [
+                new ActionRowBuilder().addComponents(subjectSelect),
+                new ActionRowBuilder().addComponents(tutorSelect)
+              ]
+            }).catch(() => {});
+          }
           db._tempTutorRemove[key].userid = String(selected);
           saveDB();
           if (db._tempTutorRemove[key].subject) {
@@ -3112,70 +3428,56 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       if (interaction.customId && interaction.customId.startsWith('close_ticket_select|')) {
-  if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
 
-  const cmdParts = interaction.customId.split('|');
-  const code = cmdParts[1];
-  const which = cmdParts[2];
-  const ticket = db.tickets[code];
-  if (!ticket) return interaction.reply({ content: 'Ticket not found.', ephemeral: true }).catch(() => {});
+        const { baseCustomId, page } = parsePagedCustomId(interaction.customId);
+        const cmdParts = baseCustomId.split('|');
+        const code = cmdParts[1];
+        const which = cmdParts[2];
+        const ticket = db.tickets[code];
+        if (!ticket) return interaction.reply({ content: 'Ticket not found.', ephemeral: true }).catch(() => {});
 
-  ticket._closeFlowTemp = ticket._closeFlowTemp || {};
-  console.log(`[CLOSE SELECT] Ticket ${code}, which: ${which}, value: ${interaction.values[0]}`);
+        ticket._closeFlowTemp = ticket._closeFlowTemp || {};
+        const selectedValue = interaction.values[0];
+        console.log(`[CLOSE SELECT] Ticket ${code}, which: ${which}, value: ${selectedValue}`);
   
-  if (which === 'hired') {
-    ticket._closeFlowTemp.hired = interaction.values[0] || 'no';
-    console.log(`[CLOSE SELECT] Saved hired selection: ${ticket._closeFlowTemp.hired} for ticket ${code}`);
-    saveDB();
-    console.log(`[CLOSE SELECT] Database saved after hired selection`);
-    return interaction.update({ content: 'Selection saved. Now choose tutor and subject, then click "Provide reason and close".', components: interaction.message.components }).catch(() => {});
-  } else if (which === 'tutor') {
-  const selectedTutorId = interaction.values[0] || null;
-  ticket._closeFlowTemp.hiredTutorId = selectedTutorId;
-  console.log(`[CLOSE SELECT] Saved tutor selection: ${selectedTutorId} for ticket ${code}`);
+        if (which === 'hired') {
+          ticket._closeFlowTemp.hired = selectedValue || 'no';
+          console.log(`[CLOSE SELECT] Saved hired selection: ${ticket._closeFlowTemp.hired} for ticket ${code}`);
+          saveDB();
+          console.log(`[CLOSE SELECT] Database saved after hired selection`);
+          return interaction.update({ content: 'Selection saved. Now choose tutor and subject, then click "Provide reason and close".', components: interaction.message.components }).catch(() => {});
+        } else if (which === 'tutor') {
+        if (isPagedNavigationValue(selectedValue)) {
+          const components = await buildCloseFlowComponents(interaction.guild, code, ticket, { tutorPage: getPagedNavigationTarget(page, selectedValue), subjectPage: 0 });
+          return interaction.update({ content: 'Please pick whether the student was hired, the tutor if yes, and the subject. Then click Provide reason and close.', components }).catch(() => {});
+        }
+        const selectedTutorId = selectedValue || null;
+        ticket._closeFlowTemp.hiredTutorId = selectedTutorId;
+        console.log(`[CLOSE SELECT] Saved tutor selection: ${selectedTutorId} for ticket ${code}`);
   
-  // Update subject dropdown to only show subjects this tutor teaches
-  if (selectedTutorId && selectedTutorId !== 'none') {
-    const tutorSubjects = [];
-    for (const [subj, tutors] of Object.entries(db.subjectTutors)) {
-      if (tutors.includes(selectedTutorId)) {
-        tutorSubjects.push(subj);
-      }
-    }
-    
-    if (tutorSubjects.length > 0) {
-      const filteredSubjOptions = tutorSubjects.slice(0, 24).map(s => ({ 
-        label: s.substring(0, 100), 
-        value: s.substring(0, 100),
-        description: `Subject: ${s}`.substring(0, 100)
-      }));
-      
-      // Only include "Use ticket subject" if tutor teaches it
-      const options = [];
-      if (tutorSubjects.includes(ticket.subject)) {
-        options.push({ label: 'Use ticket subject', value: 'ticket_subject', description: `Ticket subject: ${ticket.subject}` });
-      }
-      options.push(...filteredSubjOptions);
-      
-      const newSubjectSelect = new StringSelectMenuBuilder()
-        .setCustomId(`close_ticket_select|${code}|subject`)
-        .setPlaceholder('Choose subject this tutor teaches')
-        .addOptions(options);
-        
-        const updatedRows = [...interaction.message.components];
-        updatedRows[2] = new ActionRowBuilder().addComponents(newSubjectSelect);
-        
-        saveDB();
-        return interaction.update({ content: `Tutor selected. Now choose a subject this tutor teaches.`, components: updatedRows }).catch(() => {});
-      }
-    }
-    saveDB();
-    return interaction.update({ content: 'Selection saved. Now choose subject, then click "Provide reason and close".', components: interaction.message.components }).catch(() => {});
-  } else if (which === 'subject') {
-    const selected = interaction.values[0];
-    ticket._closeFlowTemp.assignedSubject = selected === 'ticket_subject' ? ticket.subject : selected;
-    console.log(`[CLOSE SELECT] Saved subject selection: ${ticket._closeFlowTemp.assignedSubject} for ticket ${code}`);
-    console.log(`[CLOSE SELECT] Full temp data for ticket ${code}:`, JSON.stringify(ticket._closeFlowTemp));
+        // Update subject dropdown to only show subjects this tutor teaches
+        if (selectedTutorId && selectedTutorId !== 'none') {
+          const tutorSubjects = Object.entries(db.subjectTutors || {})
+            .filter(([, tutors]) => tutors.includes(selectedTutorId))
+            .map(([subj]) => subj);
+          if (tutorSubjects.length > 0) {
+            const components = await buildCloseFlowComponents(interaction.guild, code, ticket, { tutorPage: 0, subjectPage: 0 });
+            saveDB();
+            return interaction.update({ content: `Tutor selected. Now choose a subject this tutor teaches.`, components }).catch(() => {});
+          }
+        }
+          saveDB();
+          return interaction.update({ content: 'Selection saved. Now choose subject, then click "Provide reason and close".', components: interaction.message.components }).catch(() => {});
+        } else if (which === 'subject') {
+          if (isPagedNavigationValue(selectedValue)) {
+            const components = await buildCloseFlowComponents(interaction.guild, code, ticket, { tutorPage: 0, subjectPage: getPagedNavigationTarget(page, selectedValue) });
+            return interaction.update({ content: 'Please pick whether the student was hired, the tutor if yes, and the subject. Then click Provide reason and close.', components }).catch(() => {});
+          }
+          const selected = selectedValue;
+          ticket._closeFlowTemp.assignedSubject = selected === 'ticket_subject' ? ticket.subject : selected;
+          console.log(`[CLOSE SELECT] Saved subject selection: ${ticket._closeFlowTemp.assignedSubject} for ticket ${code}`);
+          console.log(`[CLOSE SELECT] Full temp data for ticket ${code}:`, JSON.stringify(ticket._closeFlowTemp));
     saveDB();
     console.log(`[CLOSE SELECT] Database saved after subject selection`);
     return interaction.update({ content: 'Selection saved, click "Provide reason and close" when ready.', components: interaction.message.components, ephemeral: true }).catch(() => {});
@@ -3346,80 +3648,8 @@ if (cmd === 'close') {
   if (!ticket) return interaction.reply({ content: `Ticket ${code} not found.`, ephemeral: true }).catch(() => {});
   if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can close tickets.', ephemeral: true }).catch(() => {});
 
-  // Build select for hired yes/no
-  const hiredSelect = new StringSelectMenuBuilder()
-    .setCustomId(`close_ticket_select|${code}|hired`)
-    .setPlaceholder('Did the student hire a tutor?')
-    .addOptions([
-      { label: 'No', value: 'no', description: 'Student did not hire a tutor' },
-      { label: 'Yes, hired tutor', value: 'yes', description: 'Student hired a tutor' }
-    ]);
-
-  // Build tutor select populated with known tutors (display usernames instead of IDs)
-  const tutorOptions = [];
-  const allTutorIds = Array.from(new Set(Object.values(db.subjectTutors).flat()));
-  
-  // Add a default option
-  tutorOptions.push({ 
-    label: 'Select a tutor...', 
-    value: 'none',
-    description: 'Choose a tutor if hired' 
-  });
-
-  for (const tid of allTutorIds.slice(0, 24)) { // Limit to 24 to stay under 25 total
-    let label = `User ID: ${tid}`;
-    let description = '';
-    try {
-      const m = await interaction.guild.members.fetch(tid).catch(() => null);
-      if (m) {
-        label = m.user.username;
-        description = `(${m.user.tag})`;
-      } else {
-        const u = await client.users.fetch(tid).catch(() => null);
-        if (u) {
-          label = u.username;
-          description = `(${u.tag})`;
-        }
-      }
-    } catch (e) {}
-    // description must be a non-empty string or omitted — never pass ''
-    const tutorOpt = { 
-      label: (label || `User ${tid}`).substring(0, 100), 
-      value: String(tid).substring(0, 100),
-    };
-    if (description) tutorOpt.description = description.substring(0, 50);
-    tutorOptions.push(tutorOpt);
-  }
-  
-  const tutorSelect = new StringSelectMenuBuilder()
-    .setCustomId(`close_ticket_select|${code}|tutor`)
-    .setPlaceholder('Choose tutor (if hired)')
-    .addOptions(tutorOptions);
-
-  // Subject select - will be updated dynamically when tutor is chosen
-  const subjOptions = (db.subjects || []).slice(0, 24).map(s => ({ 
-    label: s.substring(0, 100), 
-    value: s.substring(0, 100),
-    description: `Subject: ${s}`.substring(0, 100)
-  }));
-  
-  const subjectSelect = new StringSelectMenuBuilder()
-    .setCustomId(`close_ticket_select|${code}|subject`)
-    .setPlaceholder('Choose subject for assignment (if hired)')
-    .addOptions([
-      { label: 'Use ticket subject', value: 'ticket_subject', description: `Ticket subject: ${ticket.subject}` },
-      ...subjOptions
-    ]);
-
-  const rows = [
-    new ActionRowBuilder().addComponents(hiredSelect),
-    new ActionRowBuilder().addComponents(tutorSelect),
-    new ActionRowBuilder().addComponents(subjectSelect),
-  ];
-  // Button to open the modal for reason, modal id will be close_ticket_modal|CODE
-  const buttonRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`open_close_modal|${code}`).setLabel('Provide reason and close').setStyle(ButtonStyle.Danger));
-
-  return interaction.reply({ content: 'Please pick whether the student was hired, the tutor if yes, and the subject. Then click Provide reason and close.', components: [...rows, buttonRow], ephemeral: true }).catch(() => {});
+  const components = await buildCloseFlowComponents(interaction.guild, code, ticket);
+  return interaction.reply({ content: 'Please pick whether the student was hired, the tutor if yes, and the subject. Then click Provide reason and close.', components, ephemeral: true }).catch(() => {});
 }
 
       // subject / tutor / createad / editad / sticky / embedcolor / editinit / help / staffhelp
@@ -3497,25 +3727,10 @@ if (cmd === 'close') {
         if (action === 'info') {
           if (!useridRaw) {
             // present a select of known tutors so staff don't need to type IDs
-            const allTutorIds = Array.from(new Set(Object.values(db.subjectTutors).flat()));
+            const allTutorIds = getAllTutorIds();
             if (allTutorIds.length === 0) return interaction.reply({ content: 'No tutors in database.', ephemeral: true }).catch(() => {});
-            const options = [];
-            for (const tid of allTutorIds.slice(0, 24)) {
-              let label = `User ID: ${tid}`;
-              let desc = '';
-              try {
-                const m = await interaction.guild.members.fetch(tid).catch(() => null);
-                if (m) { label = m.user.username; desc = `(${m.user.tag})`; }
-                else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } }
-              } catch (e) {}
-              // Show ad code(s) for this tutor if available
-              const tutorAdCodes = Object.values(db.createAds || {}).filter(a => a.tutorId === tid && a.adCode).map(a => a.adCode);
-              if (tutorAdCodes.length) desc = `${tutorAdCodes.join(', ')}${desc ? ' · ' + desc : ''}`;
-              const infoOpt = { label: (label || `User ${tid}`).substring(0,100), value: String(tid).substring(0,100) };
-              if (desc) infoOpt.description = desc.substring(0,50);
-              options.push(infoOpt);
-            }
-            const select = new StringSelectMenuBuilder().setCustomId('tutor_select|info').setPlaceholder('Select a tutor to view info').addOptions(options);
+            const options = await buildTutorSelectOptions(interaction.guild, allTutorIds, { includeAdCodes: true });
+            const select = buildPaginatedSelectMenu({ baseCustomId: 'tutor_select|info', placeholder: 'Select a tutor to view info', options });
             return interaction.reply({ content: 'Select a tutor to view info:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
           }
           const userid = String(useridRaw);
@@ -3567,22 +3782,10 @@ if (cmd === 'close') {
           if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can manage tutor notes.', ephemeral: true }).catch(() => {});
           if (!useridRaw) {
             // present a select of tutors to open notes modal for
-            const allTutorIds = Array.from(new Set(Object.values(db.subjectTutors).flat()));
+            const allTutorIds = getAllTutorIds();
             if (allTutorIds.length === 0) return interaction.reply({ content: 'No tutors in database.', ephemeral: true }).catch(() => {});
-            const options = [];
-            for (const tid of allTutorIds.slice(0, 24)) {
-              let label = `User ID: ${tid}`;
-              let desc = '';
-              try {
-                const m = await interaction.guild.members.fetch(tid).catch(() => null);
-                if (m) { label = m.user.username; desc = `(${m.user.tag})`; }
-                else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } }
-              } catch (e) {}
-              const notesOpt = { label: (label || `User ${tid}`).substring(0,100), value: String(tid).substring(0,100) };
-              if (desc) notesOpt.description = desc.substring(0,50);
-              options.push(notesOpt);
-            }
-            const select = new StringSelectMenuBuilder().setCustomId('tutor_select|notes').setPlaceholder('Select a tutor to edit notes').addOptions(options);
+            const options = await buildTutorSelectOptions(interaction.guild, allTutorIds);
+            const select = buildPaginatedSelectMenu({ baseCustomId: 'tutor_select|notes', placeholder: 'Select a tutor to edit notes', options });
             return interaction.reply({ content: 'Select a tutor to edit notes:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
           }
 
@@ -3666,25 +3869,16 @@ if (cmd === 'close') {
             const rows = [];
 
             // Subject select
-            const subjOptions = (db.subjects || []).slice(0, 25).map(s => ({ label: s.substring(0,100), value: s.substring(0,100), description: `Subject: ${s}`.substring(0,50) }));
+            const subjOptions = buildSubjectSelectOptions(db.subjects || []);
             if (subjOptions.length) {
-              const subjectSelect = new StringSelectMenuBuilder().setCustomId('tutor_remove_select|subject').setPlaceholder('Select subject to remove tutor from').addOptions(subjOptions);
+              const subjectSelect = buildPaginatedSelectMenu({ baseCustomId: 'tutor_remove_select|subject', placeholder: 'Select subject to remove tutor from', options: subjOptions });
               rows.push(new ActionRowBuilder().addComponents(subjectSelect));
             }
 
             // Tutor select - include tutors present in db.subjectTutors
-            const known = Array.from(new Set(Object.values(db.subjectTutors || {}).flat())).slice(0,24);
-            const tutorOptions = [];
-            for (const tid of known) {
-              let label = `User ID: ${tid}`;
-              let desc = '';
-              try { const m = await interaction.guild.members.fetch(tid).catch(() => null); if (m) { label = m.user.username; desc = `(${m.user.tag})`; } else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } } } catch (e) {}
-              const rmTutorOpt = { label: (label || `User ${tid}`).substring(0,100), value: String(tid).substring(0,100) };
-              if (desc) rmTutorOpt.description = desc.substring(0,50);
-              tutorOptions.push(rmTutorOpt);
-            }
+            const tutorOptions = await buildTutorSelectOptions(interaction.guild, getAllTutorIds());
             if (tutorOptions.length) {
-              const tutorSelect = new StringSelectMenuBuilder().setCustomId('tutor_remove_select|tutor').setPlaceholder('Select tutor to remove').addOptions(tutorOptions);
+              const tutorSelect = buildPaginatedSelectMenu({ baseCustomId: 'tutor_remove_select|tutor', placeholder: 'Select tutor to remove', options: tutorOptions });
               rows.push(new ActionRowBuilder().addComponents(tutorSelect));
             }
 
@@ -3695,16 +3889,8 @@ if (cmd === 'close') {
           // If subject provided, show tutors for that subject only
           const arr = db.subjectTutors[subj] || [];
           if (!arr.length) return interaction.reply({ content: `No tutors for subject ${subj}.`, ephemeral: true }).catch(() => {});
-          const options = [];
-          for (const tid of arr.slice(0,24)) {
-            let label = `User ID: ${tid}`;
-            let desc = '';
-            try { const m = await interaction.guild.members.fetch(tid).catch(() => null); if (m) { label = m.user.username; desc = `(${m.user.tag})`; } else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } } } catch (e) {}
-            const rmOpt = { label: (label || `User ${tid}`).substring(0,100), value: String(tid).substring(0,100) };
-            if (desc) rmOpt.description = desc.substring(0,50);
-            options.push(rmOpt);
-          }
-          const select = new StringSelectMenuBuilder().setCustomId(`tutor_remove_select|tutor|${subj}`).setPlaceholder('Select tutor to remove from subject').addOptions(options);
+          const options = await buildTutorSelectOptions(interaction.guild, arr.map(id => String(id)));
+          const select = buildPaginatedSelectMenu({ baseCustomId: `tutor_remove_select|tutor|${subj}`, placeholder: 'Select tutor to remove from subject', options });
           return interaction.reply({ content: `Select a tutor to remove from ${subj}:`, components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
         }
 
@@ -3726,11 +3912,11 @@ if (cmd === 'close') {
           const key = interaction.user.id;
           db._tempTutorRemove[key] = { subject: null, userid };
           saveDB();
-          const subjectOpts = tutorSubjects.slice(0, 25).map(s => ({ label: s.substring(0, 100), value: s.substring(0, 100) }));
-          const subjectSelect = new StringSelectMenuBuilder()
-            .setCustomId('tutor_remove_select|subject')
-            .setPlaceholder('Select subject to remove tutor from')
-            .addOptions(subjectOpts);
+          const subjectSelect = buildPaginatedSelectMenu({
+            baseCustomId: 'tutor_remove_select|subject',
+            placeholder: 'Select subject to remove tutor from',
+            options: buildSubjectSelectOptions(tutorSubjects)
+          });
           return interaction.reply({
             content: `Select the subject to remove <@${userid}> from:`,
             components: [new ActionRowBuilder().addComponents(subjectSelect)],
@@ -3774,27 +3960,22 @@ if (cmd === 'close') {
 
           // Subject select if subject not provided (for remove flow)
           if (!subj) {
-            const subjOptions = (db.subjects || []).slice(0, 25).map(s => ({ label: s.substring(0,100), value: s.substring(0,100), description: `Subject: ${s}`.substring(0,50) }));
+            const subjOptions = buildSubjectSelectOptions(db.subjects || []);
             if (subjOptions.length === 0) return interaction.reply({ content: 'No subjects available. Please add subjects first using /subject add', ephemeral: true }).catch(() => {});
             const subjectCustomId = action === 'remove' ? 'tutor_remove_select|subject' : 'tutor_add_select|subject';
-            const subjectSelect = new StringSelectMenuBuilder().setCustomId(subjectCustomId).setPlaceholder(action === 'remove' ? 'Select subject to remove tutor from' : 'Select subject to add tutor to').addOptions(subjOptions);
+            const subjectSelect = buildPaginatedSelectMenu({
+              baseCustomId: subjectCustomId,
+              placeholder: action === 'remove' ? 'Select subject to remove tutor from' : 'Select subject to add tutor to',
+              options: subjOptions
+            });
             rows.push(new ActionRowBuilder().addComponents(subjectSelect));
           }
 
           // Tutor select if userid not provided (only for remove flow; add flow requires USER option)
           if (!useridRaw && action === 'remove') {
-            const known = Array.from(new Set(Object.values(db.subjectTutors || {}).flat()));
-            const options = [];
-            for (const tid of known.slice(0,24)) {
-              let label = `User ID: ${tid}`;
-              let desc = '';
-              try { const mm = await interaction.guild.members.fetch(tid).catch(() => null); if (mm) { label = mm.user.username; desc = `(${mm.user.tag})`; } else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } } } catch (e) {}
-              const rmKnownOpt = { label: (label || `User ${tid}`).substring(0,100), value: String(tid).substring(0,100) };
-              if (desc) rmKnownOpt.description = desc.substring(0,50);
-              options.push(rmKnownOpt);
-            }
+            const options = await buildTutorSelectOptions(interaction.guild, getAllTutorIds());
             if (options.length) {
-              const tutorSelect = new StringSelectMenuBuilder().setCustomId('tutor_remove_select|tutor').setPlaceholder('Select tutor to remove').addOptions(options);
+              const tutorSelect = buildPaginatedSelectMenu({ baseCustomId: 'tutor_remove_select|tutor', placeholder: 'Select tutor to remove', options });
               rows.push(new ActionRowBuilder().addComponents(tutorSelect));
             }
           }
@@ -3871,22 +4052,10 @@ if (cmd === 'close') {
 
         if (!useridRaw) {
           // Show a select menu to pick a tutor
-          const allTutorIds = Array.from(new Set(Object.values(db.subjectTutors || {}).flat()));
+          const allTutorIds = getAllTutorIds();
           if (allTutorIds.length === 0) return interaction.reply({ content: 'No tutors in database.', ephemeral: true }).catch(() => {});
-          const options = [];
-          for (const tid of allTutorIds.slice(0, 25)) {
-            let label = `User ID: ${tid}`;
-            let desc = '';
-            try {
-              const m = await interaction.guild.members.fetch(tid).catch(() => null);
-              if (m) { label = m.user.username; desc = `(${m.user.tag})`; }
-              else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } }
-            } catch (e) {}
-            const opt = { label: (label || `User ${tid}`).substring(0, 100), value: String(tid).substring(0, 100) };
-            if (desc) opt.description = desc.substring(0, 50);
-            options.push(opt);
-          }
-          const select = new StringSelectMenuBuilder().setCustomId('tutor_select|edit').setPlaceholder('Select a tutor to edit contact info').addOptions(options);
+          const options = await buildTutorSelectOptions(interaction.guild, allTutorIds);
+          const select = buildPaginatedSelectMenu({ baseCustomId: 'tutor_select|edit', placeholder: 'Select a tutor to edit contact info', options });
           return interaction.reply({ content: 'Select a tutor to edit their phone number and date of birth:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
         }
 
@@ -4040,33 +4209,18 @@ if (cmd === 'createad') {
             }
         }
 
-        // Create subject select menu with current subject pre-selected
-        const subjectOptions = (db.subjects || []).slice(0, 25).map(s => {
-            const option = new StringSelectMenuOptionBuilder()
-                .setLabel(s.substring(0, 100))
-                .setValue(s.substring(0, 100))
-                .setDescription(clampLabel(`Select ${s}`, 50));
-            if (s === preTitle) {
-                option.setDefault(true);
-            }
-            return option;
-        });
-        
-        if (subjectOptions.length === 0) {
+        if ((db.subjects || []).length === 0) {
             return interaction.reply({ content: 'No subjects available. Please add subjects first using /subject add', ephemeral: true }).catch(() => {});
         }
-        
-        const subjectSelect = new StringSelectMenuBuilder()
-            .setCustomId('edit_ad_subject')
-            .setPlaceholder('Select a subject')
-            .addOptions(subjectOptions)
-            .setRequired(true);
-        
-        const subjectLabel = new LabelBuilder()
-            .setLabel('Subject')
-            .setStringSelectMenuComponent(subjectSelect);
 
         const modal = new ModalBuilder().setCustomId(`editad_modal|${messageId}|${foundInCategoryChannel ? 'category' : 'find'}`).setTitle(`Edit ad ${messageId}`);
+        const subjectInput = new TextInputBuilder()
+            .setCustomId('edit_ad_subject')
+            .setLabel('Subject')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setValue(String(preTitle || '').substring(0, 100))
+            .setPlaceholder(clampLabel(`Type the subject name${preTitle ? `, e.g. ${preTitle}` : ''}`, 100));
         const msgInput = new TextInputBuilder().setCustomId('edit_ad_message').setLabel('Ad message').setStyle(TextInputStyle.Paragraph).setRequired(true).setValue((preDesc || '').substring(0, 4000));
         
         const colorInput = new TextInputBuilder()
@@ -4085,7 +4239,7 @@ if (cmd === 'createad') {
             .setValue(preRoleId);
         
         modal.addComponents(
-            subjectLabel,
+            new ActionRowBuilder().addComponents(subjectInput),
             new ActionRowBuilder().addComponents(msgInput),
             new ActionRowBuilder().addComponents(colorInput),
             new ActionRowBuilder().addComponents(roleInput)
