@@ -203,7 +203,7 @@ function sortStringsCaseInsensitive(values) {
 }
 
 function parsePagedCustomId(customId) {
-  const match = String(customId || '').match(/^(.*)\|page\|(\d+)$/);
+  const match = String(customId || '').match(/^(.*)\|__page__\|(\d+)$/);
   if (!match) return { baseCustomId: customId, page: 0 };
   return { baseCustomId: match[1], page: Number.parseInt(match[2], 10) || 0 };
 }
@@ -218,6 +218,9 @@ function getPagedNavigationTarget(currentPage, value) {
 
 function buildPaginatedSelectMenu({ baseCustomId, placeholder, options, page = 0, required = false }) {
   const rawOptions = Array.isArray(options) ? options : [];
+  if (rawOptions.length === 0) {
+    throw new Error(`buildPaginatedSelectMenu called without options for ${baseCustomId}`);
+  }
   const needsPagination = rawOptions.length > 25;
   const pageSize = needsPagination ? 23 : 25;
   const maxPage = Math.max(0, Math.ceil(rawOptions.length / pageSize) - 1);
@@ -237,9 +240,9 @@ function buildPaginatedSelectMenu({ baseCustomId, placeholder, options, page = 0
       description: `Go to page ${safePage + 2} of ${maxPage + 1}`.substring(0, 100)
     });
   }
-  const finalPlaceholder = needsPagination ? `${placeholder} • Page ${safePage + 1}/${maxPage + 1}` : placeholder;
+  const finalPlaceholder = needsPagination ? `${placeholder} | Page ${safePage + 1}/${maxPage + 1}` : placeholder;
   return new StringSelectMenuBuilder()
-    .setCustomId(`${baseCustomId}|page|${safePage}`)
+    .setCustomId(`${baseCustomId}|__page__|${safePage}`)
     .setPlaceholder(finalPlaceholder)
     .addOptions(pageOptions)
     .setRequired(required);
@@ -357,7 +360,9 @@ async function buildTutorSelectOptions(guild, tutorIds, { includeNoneOption = fa
           if (db.tutorProfiles[tid].tag) description = `(${db.tutorProfiles[tid].tag})`;
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      // Best-effort label lookup only; fall back to stored IDs/usernames when Discord fetches fail.
+    }
     if (includeAdCodes) {
       const tutorAdCodes = Object.values(db.createAds || {}).filter(ad => ad.tutorId === tid && ad.adCode).map(ad => ad.adCode);
       if (tutorAdCodes.length) description = `${tutorAdCodes.join(', ')}${description ? ' · ' + description : ''}`;
@@ -1231,7 +1236,7 @@ async function registerCommands() {
     {
       name: 'enquire',
       description: 'Create an enquiry ticket, choose a subject',
-      options: [{ name: 'subject', description: 'Choose the subject', type: 3, required: true, autocomplete: true }]
+      options: [{ name: 'subject', description: 'Type the subject name', type: 3, required: true, autocomplete: true }]
     },
     {
       name: 'reply',
@@ -1413,7 +1418,7 @@ client.on('interactionCreate', async (interaction) => {
         .filter(subject => !query || subject.toLowerCase().includes(query))
         .slice(0, 25)
         .map(subject => ({ name: subject, value: subject }));
-      await interaction.respond(choices).catch(() => {});
+      await interaction.respond(choices).catch(() => { /* Discord rejects stale autocomplete responses after the user keeps typing. */ });
       return;
     }
 
@@ -1438,7 +1443,7 @@ client.on('interactionCreate', async (interaction) => {
         .filter(s => !query || s.toLowerCase().includes(query))
         .slice(0, 25)
         .map(s => ({ name: s, value: s }));
-      await interaction.respond(choices).catch(() => {});
+      await interaction.respond(choices).catch(() => { /* Discord rejects stale autocomplete responses after the user keeps typing. */ });
       return;
     }
     
@@ -1593,11 +1598,11 @@ client.on('interactionCreate', async (interaction) => {
       if (custom && custom.startsWith('open_createad_modal|')) {
         const parts = custom.split('|');
         const requester = parts[1];
-        const subjectKey = parts[2] || '';
+        const rawSubjectInput = parts[2] || '';
         const origin = parts[3] || null;
         const originChannel = parts[4] || null;
         const levelKeyFromModmail = parts[5] || null; // For modmail: level is pre-selected
-        let levelKey = normalizeCreateAdLevelKey(subjectKey) || (levelKeyFromModmail ? normalizeCreateAdLevelKey(levelKeyFromModmail) : 'other');
+        let levelKey = normalizeCreateAdLevelKey(rawSubjectInput) || (levelKeyFromModmail ? normalizeCreateAdLevelKey(levelKeyFromModmail) : 'other');
         if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
           return interaction.reply({ content: 'Only the command invoker or staff may open this modal.', ephemeral: true }).catch(() => {});
         }
@@ -1609,7 +1614,7 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ content: 'No subjects available for this level. Add subjects first with `/subject add`.', ephemeral: true }).catch(() => {});
           }
           const subjectExamples = subjectsForLevel.slice(0, 3).join(', ');
-          const prefilledSubject = resolveCanonicalSubject(subjectKey, { levelKey, fallbackToAll: true }).subject || subjectKey || '';
+          const prefilledSubject = resolveCanonicalSubject(rawSubjectInput, { levelKey, fallbackToAll: true }).subject || '';
           const subjectInput = new TextInputBuilder()
             .setCustomId('ad_subject')
             .setLabel(clampLabel('Subject'))
@@ -1629,7 +1634,7 @@ client.on('interactionCreate', async (interaction) => {
           const optionalFieldsInput = new TextInputBuilder().setCustomId('ad_optional_fields').setLabel(clampLabel('Optional: Message, Testimonials, Payment, Color, Role')).setStyle(TextInputStyle.Paragraph).setRequired(false).setValue(clampLabel('Message from tutor:\nStudent Testimonials:\nPayment Terms: 100% upfront before classes begin\nColor: \nRole ID: ', 1000));
 
           const modal = new ModalBuilder()
-            .setCustomId(`createad_modal|${interaction.id}|${levelKey}|${origin || ''}|${originChannel || ''}|${subjectKey}`)
+            .setCustomId(`createad_modal|${interaction.id}|${levelKey}|${origin || ''}|${originChannel || ''}|${rawSubjectInput}`)
             .setTitle('Create Ad Details')
             .addComponents(
               new ActionRowBuilder().addComponents(subjectInput),
@@ -2201,22 +2206,20 @@ client.on('interactionCreate', async (interaction) => {
             const subjectInput = interaction.fields.getTextInputValue('ad_subject') || '';
             const subjectResolution = resolveCanonicalSubject(subjectInput, { levelKey, fallbackToAll: true });
             const subject = subjectResolution.subject;
-            if (!subject) {
+            if (!subject || !(db.subjects || []).includes(subject)) {
                 return interaction.editReply({ content: formatSubjectResolutionError(subjectInput, subjectResolution.suggestions) }).catch(() => {});
             }
             
             // Get tutor from text input in modal
             let selectedTutorId = null;
-            try {
-                const tutorInput = interaction.fields.getTextInputValue('ad_tutor') || '';
-                if (String(tutorInput || '').trim()) {
-                    const tutorResolution = resolveTutorInput(tutorInput);
-                    if (!tutorResolution.tutorId) {
-                        return interaction.editReply({ content: formatTutorResolutionError(tutorInput, tutorResolution.suggestions) }).catch(() => {});
-                    }
-                    selectedTutorId = tutorResolution.tutorId;
+            const tutorInput = interaction.fields.getTextInputValue('ad_tutor') || '';
+            if (tutorInput.trim()) {
+                const tutorResolution = resolveTutorInput(tutorInput);
+                if (!tutorResolution.tutorId) {
+                    return interaction.editReply({ content: formatTutorResolutionError(tutorInput, tutorResolution.suggestions) }).catch(() => {});
                 }
-            } catch (e) { /* optional field may not exist */ }
+                selectedTutorId = tutorResolution.tutorId;
+            }
 
             // Get all template fields (parsed from combined inputs)
             const subjectDetails = interaction.fields.getTextInputValue('ad_subject_details') || '';
@@ -3140,7 +3143,7 @@ client.on('interactionCreate', async (interaction) => {
           if (!selected) return interaction.reply({ content: 'No subject selected.', ephemeral: true }).catch(() => {});
           if (isPagedNavigationValue(selected)) {
             const targetPage = getPagedNavigationTarget(page, selected);
-            const levelKey = db._tempTutorAdd[key].level || null;
+            const levelKey = db._tempTutorAdd[key]?.level || null;
             const levelLabel = CREATEAD_LEVEL_LABELS[levelKey] || levelKey || 'Selected';
             const subjectOptions = buildSubjectSelectOptions(getSubjectsForLevel(levelKey));
             const subjectSelect = buildPaginatedSelectMenu({
@@ -3438,6 +3441,9 @@ client.on('interactionCreate', async (interaction) => {
         if (!ticket) return interaction.reply({ content: 'Ticket not found.', ephemeral: true }).catch(() => {});
 
         ticket._closeFlowTemp = ticket._closeFlowTemp || {};
+        if (!interaction.values || interaction.values.length === 0) {
+          return interaction.reply({ content: 'No option was selected.', ephemeral: true }).catch(() => {});
+        }
         const selectedValue = interaction.values[0];
         console.log(`[CLOSE SELECT] Ticket ${code}, which: ${which}, value: ${selectedValue}`);
   
