@@ -1,5 +1,5 @@
 {
-  "nextTicketId": 51,
+  "nextTicketId": 61,
   "subjects": [
     "IGCSE/GCSE Accounting",
     "AS/AL Maths",
@@ -251,9 +251,24 @@
           "at": 1773505804814,
           "text": "tho ofc the a level ones are capable of teaching igcse",
           "attachments": []
+        },
+        {
+          "who": "Staff 873095080938975232",
+          "at": 1774587337044,
+          "text": "=omg why not closing",
+          "attachments": []
+        },
+        {
+          "who": "Staff 984470340149338182",
+          "at": 1774606862897,
+          "text": "=huh idk dude this is sus",
+          "attachments": []
         }
       ],
-      "createdAt": 1773504366536
+      "createdAt": 1773504366536,
+      "_closeFlowTemp": {
+        "hired": "no"
+      }
     },
     "48": {
       "ticketChannelId": "1485385632518770708",
@@ -272,20 +287,224 @@
           "attachments": []
         }
       ],
-      "createdAt": 1774213932642
+      "createdAt": 1774213932642,
+      "_closeFlowTemp": {
+        "hired": "no"
+      }
     },
-    "50": {
-      "ticketChannelId": "1486359243429777450",
-      "studentId": "1409804727247441983",
+    "53": {
+      "ticketChannelId": "1489910619913191478",
+      "studentId": "1167591213923315715",
+      "tutorMessageId": "1489941268024000674",
+      "tutorThreadId": "1489941268024000674",
+      "subject": "IGCSE/GCSE Add Maths",
+      "approved": true,
+      "tutorCount": 2,
+      "tutorMap": {
+        "984470340149338182": 1,
+        "731617267959463977": 2
+      },
+      "messages": [
+        {
+          "who": "Student",
+          "at": 1775292847883,
+          "text": "Hi! I would like to join the group lesson for IGCSE add math I would like to know what is the payment methods",
+          "attachments": []
+        },
+        {
+          "who": "Staff 984470340149338182",
+          "at": 1775300198677,
+          "text": "https://discord.com/channels/1360708397850431488/1429446028503023746/1485390320903389266",
+          "attachments": []
+        },
+        {
+          "who": "Tutor 1",
+          "tutorId": "984470340149338182",
+          "at": 1775300231145,
+          "text": "https://discord.com/channels/1360708397850431488/1429446028503023746/1485390320903389266"
+        },
+        {
+          "who": "Staff 873095080938975232",
+          "at": 1775301494826,
+          "text": "Which country are you currently in?\nBased on that we can decide the payment method.",
+          "attachments": []
+        },
+        {
+          "who": "Student",
+          "at": 1775302264898,
+          "text": "Malaysia",
+          "attachments": []
+        },
+        {
+          "who": "Staff 873095080938975232",
+          "at": 1775302429473,
+          "text": "That's perfect, you can send it through Al Rajhi Bank.",
+          "attachments": []
+        },
+        {
+          "who": "Staff 873095080938975232",
+          "at": 1775302496807,
+          "text": "I will share the details once the tutor and you both confirm.\nYou can then open a modmail ticket for payments by sending a DM to the bot. <@1475940201347022878>",
+          "attachments": []
+        },
+        {
+          "who": "Tutor 2",
+          "tutorId": "731617267959463977",
+          "at": 1775307323608,
+          "text": "Well there isn't an igcse add maths group session available right now unfortunately,unless you come with multiple people yourself then in that case yeah."
+        },
+        {
+          "who": "Tutor 2",
+          "tutorId": "731617267959463977",
+          "at": 1775307385235,
+          "text": "Also unfortunately there was a price change but the ad hadn't been updated yet so for one-to-one it's 7.5usd and group sessions are half that per person, is that alright with you?"
+        },
+        {
+          "who": "Tutor 2",
+          "tutorId": "731617267959463977",
+          "at": 1775307439041,
+          "text": "Regarding payment methods you can just inform me which payment method you'd like to use and I'll tell you if that works. but direct bank transfers are preferred."
+        },
+        {
+          "who": "Tutor 2",
+          "tutorId": "731617267959463977",
+          "at": 1775314446988,
+          "text": "Oh right yeah sorry\nthanks for reminding me"
+        },
+        {
+          "who": "Tutor 2",
+          "tutorId": "731617267959463977",
+          "at": 1775314518314,
+          "text": "I don't remember ever setting a minimum tho?"
+        },
+        {
+          "who": "Staff 873095080938975232",
+          "at": 1775318942041,
+          "text": "You may ignore this",
+          "attachments": []
+        },
+        {
+          "who": "Staff 873095080938975232",
+          "at": 1775318942691,
+          "text": "And this",
+          "attachments": []
+        },
+        {
+          "who": "Staff 873095080938975232",
+          "at": 1775318952422,
+          "text": "And payment will be through Tutors Link, so that too",
+          "attachments": []
+        },
+        {
+          "who": "Staff 873095080938975232",
+          "at": 1775319138623,
+          "text": "And if you want group classes then you'd need someone other than you, two people at the same timings for Group classes to be there",
+          "attachments": []
+        }
+      ],
+      "createdAt": 1775292773687
+    },
+    "58": {
+      "ticketChannelId": "1507768520405155893",
+      "studentId": "1201908584196358240",
       "tutorMessageId": null,
       "tutorThreadId": null,
-      "subject": "IGCSE/GCSE Biology",
+      "subject": "IGCSE/GCSE Accounting",
       "approved": false,
-      "awaitingApproval": false,
+      "awaitingApproval": true,
       "tutorCount": 0,
       "tutorMap": {},
-      "messages": [],
-      "createdAt": 1774446059520
+      "messages": [
+        {
+          "who": "Staff 873095080938975232",
+          "at": 1779553143550,
+          "text": "Well?",
+          "attachments": []
+        },
+        {
+          "who": "Student",
+          "at": 1779553247185,
+          "text": "I am sorry I opened this ticket for this subject by mistake is there a way to close it... I am sorry 🙏",
+          "attachments": []
+        }
+      ],
+      "createdAt": 1779550429060
+    },
+    "59": {
+      "ticketChannelId": "1508239127450226719",
+      "studentId": "873095080938975232",
+      "tutorMessageId": "1508239167279337514",
+      "tutorThreadId": "1508239167279337514",
+      "subject": "IGCSE/GCSE Maths",
+      "approved": true,
+      "tutorCount": 0,
+      "tutorMap": {},
+      "messages": [
+        {
+          "who": "Student",
+          "at": 1779662637267,
+          "text": "Test sorry",
+          "attachments": []
+        },
+        {
+          "who": "Student",
+          "at": 1779662688018,
+          "text": "There will insha allah be someone who messages for tuitions\nI hope there is...😭\nAnd I hope it works lol",
+          "attachments": []
+        },
+        {
+          "who": "Staff 984470340149338182",
+          "at": 1779664087469,
+          "text": "inshallah soon this is getting sad",
+          "attachments": []
+        }
+      ],
+      "createdAt": 1779662630371
+    },
+    "60": {
+      "ticketChannelId": "1508358100586070137",
+      "studentId": "1201908584196358240",
+      "tutorMessageId": "1508432995562946621",
+      "tutorThreadId": "1508432995562946621",
+      "subject": "IGCSE/GCSE Maths",
+      "approved": true,
+      "tutorCount": 1,
+      "tutorMap": {
+        "731617267959463977": 1
+      },
+      "messages": [
+        {
+          "who": "Student",
+          "at": 1779691390486,
+          "text": "Hello \nI would like a tutor for IGCSE maths . \nI want to understand topics better and be able to solve any type of math problems by myself. I do struggle with non calculator paper and a few topics from calculator paper. So a clear explanation and guided solving of paper or topical questions would be helpful. I have my exam in October November 2026. So I would need a lot of practice to get above 95 marks in both papers.",
+          "attachments": []
+        },
+        {
+          "who": "Tutor 1",
+          "tutorId": "731617267959463977",
+          "at": 1779719567290,
+          "text": "Hello\nThanks for reaching out, so time will be a bit tight during the timeframe you're interested in as several other students have already booked lessons in this timeframe, however it will still be possible to do lessons hopefully. I just need to ask how many hours of tutoring a week you are interested in since that will affect scheduling/I need to know to tell you if that amount of time is suitable this time period."
+        },
+        {
+          "who": "Staff 873095080938975232",
+          "at": 1779719615040,
+          "text": "<@1201908584196358240>",
+          "attachments": []
+        },
+        {
+          "who": "Student",
+          "at": 1779720066338,
+          "text": "2 to 3 class a week works and 4 classes a week before exams.",
+          "attachments": []
+        },
+        {
+          "who": "Student",
+          "at": 1779726941840,
+          "text": "1hr 30 mins",
+          "attachments": []
+        }
+      ],
+      "createdAt": 1779690995846
     }
   },
   "cooldowns": {
@@ -316,20 +535,22 @@
     "916882216481615922": 1773504366536,
     "1120097795945267256": 1773605273063,
     "1463470889902538934": 1774200847811,
-    "1409804727247441983": 1774446059520
+    "1409804727247441983": 1774446059520,
+    "1167591213923315715": 1774954557973,
+    "1092943536783114270": 1774994424697
   },
   "sticky": {
     "title": "Looking for *your* subject tutor in *this* crowd?",
     "body": "Try smashing that search icon, and type *only* your subject name.\nAnd you're gonna get all the available tutors for that subject. For all levels.",
     "color": "#fffff",
-    "messageId": "1486122380404326544"
+    "messageId": "1486428494320636078"
   },
   "createAds": {
     "1445552859272839381": {
       "channelId": "1429776595668697191",
       "embed": {
         "title": "IGCSE/GCSE Maths",
-        "description": "Subject level : Cambridge IGCSE / Edexcel GCSE / O-Level  \nSubject code(s): 0580 (and equivalents) <@&1424034599507595376> \n\n# 👨‍🏫 Tutor Details & Pricing\n- Languages: English & Arabic\n- Class Type: Both, Group classes & one-on-one\n- Class duration: 1 hour 30 minutes \n- Monthly Schedule: 8 classes/ month\n- Price per Month (USD) for one-on-one classes: 32$\n- Price per Month (USD) for Group classes: 16$\n- Time zone: GMT2+\n\nWant to talk to the available tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\n\n```Student Testimonials:```\n-# @mazenez(a2 student): \"5/5 you explain well\"\n-# @holaamigosmestefano(international maths student): \"You explained it so well\" \"I will definitely be messaging you for tutoring in as and a level\"\n-# And many other positive ratings\n\n\n```💳 Payment Terms:```\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow ⁠tutors-link-policies throughout the entire process.\n\nOnce you're ready to pay, DM @Tutors Link and you will be guided to the next steps.\nYou can also DM @Tutors Link for any problems or suggestions",
+        "description": "Subject level : Cambridge IGCSE / Edexcel GCSE / O-Level  \nSubject code(s): 0580 (and equivalents) <@&1424034599507595376> \n\n# 👨‍🏫 Tutor Details & Pricing\n- Languages: English & Arabic\n- Class Type: Both, Group classes & one-on-one\n- Class duration: 1 hour 30 minutes \n- Monthly Schedule: 8 classes/ month\n- Price per Month (USD) for one-on-one classes: 40$\n- Price per Month (USD) for Group classes: 16$\n- Time zone: GMT2+\n\nWant to talk to the available tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\n\n```Student Testimonials:```\n-# @mazenez(a2 student): \"5/5 you explain well\"\n-# @holaamigosmestefano(international maths student): \"You explained it so well\" \"I will definitely be messaging you for tutoring in as and a level\"\n-# And many other positive ratings\n\n\n```💳 Payment Terms:```\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow ⁠tutors-link-policies throughout the entire process.\n\nOnce you're ready to pay, DM @Tutors Link and you will be guided to the next steps.\nYou can also DM @Tutors Link for any problems or suggestions",
         "color": "#fffff"
       },
       "categoryChannelId": "1429446000724021278",
@@ -921,12 +1142,66 @@
         "testimonials": "",
         "paymentTerms": "100% upfront before classes begin"
       }
+    },
+    "1489910319085129759": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Accounting",
+        "description": "**Price (Group):** $cheap\n**Price (1-on-1):** $cheaper\n**Timezone:** black\n**Languages:** english banana\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": null,
+      "level": "igcse",
+      "adCode": "IG-15",
+      "categoryChannelId": "1485379727962279986",
+      "categoryMessageId": "1489910323531218997",
+      "fullDetails": {
+        "subjectLevel": "igcse",
+        "subjectCodes": "test ad",
+        "languages": "english banana",
+        "classType": "free",
+        "classDuration": "long",
+        "monthlySchedule": "alot classes/week = alot alot classes/month",
+        "price": "cheap",
+        "price1on1": "cheaper",
+        "timezone": "black",
+        "tutorMessage": "",
+        "testimonials": "test ad gone wild",
+        "paymentTerms": "100% upfront before classes begin"
+      }
+    },
+    "1508238445791809566": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Maths",
+        "description": "**Price (1-on-1):** $5\n**Timezone:** GMT2+\n**Languages:** English and Arabic\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "731617267959463977",
+      "level": "igcse",
+      "adCode": "IG-15",
+      "categoryChannelId": "1508238450267000892",
+      "categoryMessageId": "1508238452955807764",
+      "fullDetails": {
+        "subjectLevel": "IGCSE",
+        "subjectCodes": "0580",
+        "languages": "English and Arabic",
+        "classType": "one on one",
+        "classDuration": "1 Hour 30 minutes",
+        "monthlySchedule": "2 classes/week = 8 classes/month",
+        "price": "",
+        "price1on1": "5",
+        "timezone": "GMT2+",
+        "tutorMessage": "",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      }
     }
   },
   "nextAdCodes": {
     "igcse": 14,
     "other": 2,
-    "university": 6,
+    "university": 7,
     "language": 4,
     "a_level": 2
   },
@@ -1554,6 +1829,36 @@
       "archivedAt": 1774389623953,
       "archivedBy": "873095080938975232",
       "reason": "Ad removed by staff."
+    },
+    "1486428486498255028": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "University Biology",
+        "description": "Click \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": null,
+      "level": "university",
+      "adCode": "Uni-7",
+      "categoryChannelId": "1485449157614239755",
+      "categoryMessageId": "1486428490684301393",
+      "fullDetails": {
+        "subjectLevel": "test",
+        "subjectCodes": "test",
+        "languages": "NA",
+        "classType": "NA",
+        "classDuration": "test",
+        "monthlySchedule": "test classes/week",
+        "price": "",
+        "price1on1": "",
+        "timezone": "NA",
+        "tutorMessage": "",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1774462916887,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
     }
   },
   "defaultEmbedColor": "#fffff",
@@ -1720,16 +2025,6 @@
       "notes": "",
       "username": "highonwater._.",
       "tag": "highonwater._."
-    },
-    "<@873095080938975232>": {
-      "addedAt": null,
-      "students": [],
-      "reviews": [],
-      "rating": {
-        "count": 0,
-        "avg": 0
-      },
-      "notes": ""
     }
   },
   "studentAssignments": {
@@ -1773,8 +2068,8 @@
       "lastBump": 1768549507251
     },
     "873095080938975232": {
-      "count": 275,
-      "lastBump": 1774453523403
+      "count": 302,
+      "lastBump": 1775243225156
     },
     "1306942453479374889": {
       "count": 27,
@@ -1793,8 +2088,8 @@
       "lastBump": 1768392009099
     },
     "1461695210017784026": {
-      "count": 89,
-      "lastBump": 1772837770161
+      "count": 90,
+      "lastBump": 1775171870884
     },
     "1220596043964747807": {
       "count": 1,
@@ -1805,8 +2100,8 @@
       "lastBump": 1771680390423
     },
     "984470340149338182": {
-      "count": 83,
-      "lastBump": 1774433599145
+      "count": 141,
+      "lastBump": 1775235988971
     },
     "1294999826588766276": {
       "count": 4,
@@ -1835,7 +2130,16 @@
         "tutor_application": "1482618658483343401"
       },
       "1294999826588766276": {},
-      "984470340149338182": {}
+      "984470340149338182": {},
+      "1409804727247441983": {
+        "tutor_application": "1486416756846366883"
+      },
+      "1167591213923315715": {
+        "tutor_application": "1488493489376329768"
+      },
+      "1390569129144221736": {
+        "tutor_application": "1489550863851847701"
+      }
     },
     "byChannel": {
       "1445545473917194372": {
@@ -2131,6 +2435,371 @@
         "purposeLabel": "Wish to apply as a tutor",
         "letter": "A",
         "shortId": "36A"
+      },
+      "1486416756846366883": {
+        "id": 41,
+        "userId": "1409804727247441983",
+        "channelId": "1486416756846366883",
+        "createdAt": 1774459771344,
+        "anonymousMods": false,
+        "messages": [
+          {
+            "who": "User 1409804727247441983",
+            "at": 1774459757069,
+            "text": "Hello",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774462311616,
+            "text": "Hi there,",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774462340142,
+            "text": "You can fill this form,\nif you have any questions you can ask them here\nhttps://forms.gle/P2yJfsaQx1buaYhQ8\nLooking forward to having you as a tutor!",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774464827701,
+            "text": "",
+            "attachments": [
+              "https://cdn.discordapp.com/attachments/1486416678311956490/1486437964174065794/resume_3.pdf?ex=69c580bb&is=69c42f3b&hm=b9ab653f2873130e08aef5d7e475246264a4faa2494f1849a2907afb921c6997&"
+            ]
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774472602054,
+            "text": "=wot karna hai <@984470340149338182>",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774472684694,
+            "text": "Interesting, we require you to please fill the form so we have some data about you.\nJust for the formalities.",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774474885404,
+            "text": "You mentioned 30usd for one class (one on one), and you have 8 classes a month.\nSo a single month (8 classes) of one on one igcse biology will cost someone 240usd, is that right?",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774474969232,
+            "text": "Apart from that, students are allowed to take a demo session before they pay, are you okay with that?\nAs for the video, you have wirrten \"you can conduct a demo\"\nCould you please make a short video explaining a small topic, this is for us.",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774474992319,
+            "text": "And you may share the image testimonial",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774475019024,
+            "text": "It’s mid night here right now, I’ll record it for you tmr is that fine ?",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774475043157,
+            "text": "Yup no worries at all, there's no deadline\n\nHope we can help you find students!",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774475102563,
+            "text": "Also, you mentioned your country of residence is Pakistan, and in your resume it says your university is in Sydney..\nAre you living in Sydney or Pakistan... (for time zone)",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774475388398,
+            "text": "✨ I Offer a Free Demo Session ✨\n\nI’ve always believed that effective learning starts with understanding the student, not just the subject.\n\nEvery learner has a unique psychology, pace, and way of grasping concepts — and as a tutor, it’s my responsibility to adapt to students \n\nThat’s why I offer a free demo session 🤍\n\n🔹 It helps me understand the learning style, goals, and expectations\n🔹 It allows them to experience my teaching approach — no pressure, no commitment\n🔹 Together, we see if we’re the right fit for long-term learning\n\nA demo session is beneficial for both of us — they decide if they would  like to continue, and I ensure I can truly meet their needs and support their academic growth 🌱",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774475415696,
+            "text": "Yes",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774475495338,
+            "text": "Also there are some certain students who can’t afford so I judge them and the circumstances in my demo and if my intuition allows me to offer discount, I do !",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774475537961,
+            "text": "I’ll share it with the recording tmr .",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774475626198,
+            "text": "My course of university is online. So my residence is Pakistan hence I’ll be following Pakistani time zone.",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774475682054,
+            "text": "Thank you!",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774476119681,
+            "text": "I'll shorten the message when creating the ad I guess.\nAs for the discounts, we have a comission policy in the first month,\nAnd as of now we have fixed prices.. Meaning if you decided 240usd a month it stays that\nOfc if you wish to change it now you may do so, but it's not a thing that will change based on the student.\nThough of course, the second month onwards it's all between you and the student, so you may change things to your liking,",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774476137052,
+            "text": "=ig we need to add a limit to the message from tutor lol",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774477491870,
+            "text": "Sure",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774483719919,
+            "text": "=huh",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774499341999,
+            "text": "=like bro imagine you send sm1 a form and they go like... nah. here have my resume",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774499394001,
+            "text": "=lol fr tell her she has to fill the form",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774499404369,
+            "text": "=ya she did we got it",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774499430870,
+            "text": "=oh it was still weird tho lil",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774532535526,
+            "text": "I will be sending a recorded lecture",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774551013617,
+            "text": "Alright send it over whenever you're ready",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774668724520,
+            "text": "Let me know which lecture topic do you want me to record ?",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774669965442,
+            "text": "",
+            "attachments": [
+              "https://cdn.discordapp.com/attachments/1486416678311956490/1487298373517312010/42413770-B4BE-419A-8655-44336AAB4F95.png?ex=69c8a20c&is=69c7508c&hm=454ad32c015386e5a759ce1bbec6e115051d7f33c1768760d809ff5ee81497ef&",
+              "https://cdn.discordapp.com/attachments/1486416678311956490/1487298373806457092/IMG_6692.png?ex=69c8a20c&is=69c7508c&hm=b9868956dadf964810d70f0ee70efc043c5d9bc2149425d46d916c83b86bfa54&",
+              "https://cdn.discordapp.com/attachments/1486416678311956490/1487298374049992795/IMG_6693.png?ex=69c8a20d&is=69c7508d&hm=648d9d51fca13c0e8a8be489814a2a0b76652f228d9f5baeca0ab812baced889&",
+              "https://cdn.discordapp.com/attachments/1486416678311956490/1487298374284869742/IMG_6694.png?ex=69c8a20d&is=69c7508d&hm=45eb9829ebe67216cb870cf517e21327557723e8dc01a1b11c9ca3f983859c33&",
+              "https://cdn.discordapp.com/attachments/1486416678311956490/1487298374511099924/IMG_6695.png?ex=69c8a20d&is=69c7508d&hm=1d1a4bdc35eb87a84ca6db369c362bd5c0cdab0f88870322f33da00723e7cff7&"
+            ]
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774670001532,
+            "text": "",
+            "attachments": [
+              "https://cdn.discordapp.com/attachments/1486416678311956490/1487298525300658257/IMG_6689.png?ex=69c8a231&is=69c750b1&hm=22b2d117d771d8e69748a05558f5203e9db796acde3bb41e95256c599fc98469&",
+              "https://cdn.discordapp.com/attachments/1486416678311956490/1487298525661364264/IMG_6690.png?ex=69c8a231&is=69c750b1&hm=57aad63dd3a22ab843cae73706ad5ce9605be7c3ddbb6f3945b889814e7bace7&"
+            ]
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774676801664,
+            "text": "=bruh what do we say",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774676833615,
+            "text": "=what's a challenging topic for students",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774676836018,
+            "text": "=bruh this is like proffesional does she hav an app or wht",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774676851782,
+            "text": "=oh its bio",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774676897926,
+            "text": "=learnmate",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774676942042,
+            "text": "=inheritance and genetics like the stuff related to genes",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774676983289,
+            "text": "=its one of the harder topics where kids lose marks esp in p2",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774677007195,
+            "text": "=say that to her... She looks good enough tho lol\nBut ya",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774677074130,
+            "text": "=she looks good enough to teach in uni",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774677136085,
+            "text": "inheritance and genetics specifically monohybrid Inheritance & co-dominance",
+            "attachments": []
+          },
+          {
+            "who": "User zainabusmani_88884",
+            "at": 1774701664760,
+            "text": "Okay",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774701737324,
+            "text": "=when the tutors are like this I really hope we can get them students 😭\nI know it's less likely.. 🥀\nHer price is 30usd for one class btw",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774739625313,
+            "text": "=we get good tutors but no students.......",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774739646649,
+            "text": "=30usd seems reasonable for her she knows everything",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774740525300,
+            "text": "=qasm se",
+            "attachments": []
+          }
+        ],
+        "lastPingAt": 1774459784331,
+        "stickyMessageId": "1486416765930967202",
+        "dmControlMessageId": "1486416763003338812",
+        "purpose": "tutor_application",
+        "purposeLabel": "Wish to apply as a tutor",
+        "letter": "A",
+        "shortId": "41A"
+      },
+      "1488493489376329768": {
+        "id": 42,
+        "userId": "1167591213923315715",
+        "channelId": "1488493489376329768",
+        "createdAt": 1774954903110,
+        "anonymousMods": false,
+        "messages": [
+          {
+            "who": "User 1167591213923315715",
+            "at": 1774954894292,
+            "text": "I’m Jean, a native Chinese speaker fluent in English, Chinese, and Malay. I would like to apply to be a Chinese tutor. I have 15 years of Chinese learning experience and 1 year of tutoring young learners. I specialise in teaching beginner to intermediate students through engaging, structured lessons, and I’m confident in helping students build a strong foundation and interest in the language.",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1774954960842,
+            "text": "Hii there, you can fill this form\nif you have any questions you can ask them here\nhttps://forms.gle/P2yJfsaQx1buaYhQ8\nLooking forward to having you as a tutor",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1774954987392,
+            "text": "For the subject code you can enter 0",
+            "attachments": []
+          }
+        ],
+        "lastPingAt": 1774954910155,
+        "stickyMessageId": "1488493501942333452",
+        "dmControlMessageId": "1488493497366351923",
+        "purpose": "tutor_application",
+        "purposeLabel": "Wish to apply as a tutor",
+        "letter": "A",
+        "shortId": "42A"
+      },
+      "1489550863851847701": {
+        "id": 43,
+        "userId": "1390569129144221736",
+        "channelId": "1489550863851847701",
+        "createdAt": 1775207000818,
+        "anonymousMods": false,
+        "messages": [
+          {
+            "who": "User 1390569129144221736",
+            "at": 1775206991287,
+            "text": "Hi. This is the official account for Padmam IGCSE Academy. This is a group of tutors focusing on IGCSE Physics, Chemistry and Maths. Tutors for other subjects too: EM and ICT. Experienced tutors with an experience of more than 3 years.",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1775207065899,
+            "text": "Hello there,\nThat's good to know,\nIf you wish, you can apply as a tutor by filling this form;\nhttps://forms.gle/P2yJfsaQx1buaYhQ8",
+            "attachments": []
+          }
+        ],
+        "lastPingAt": 1775207015436,
+        "stickyMessageId": "1489550874328961109",
+        "dmControlMessageId": "1489550870919123005",
+        "purpose": "tutor_application",
+        "purposeLabel": "Wish to apply as a tutor",
+        "letter": "A",
+        "shortId": "43A"
       }
     },
     "pending": {
@@ -2238,7 +2907,7 @@
       }
     },
     "nextId": 66,
-    "nextId_A": 41,
+    "nextId_A": 44,
     "nextId_C": 3,
     "nextId_S": 5,
     "nextId_P": 2,
