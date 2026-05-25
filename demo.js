@@ -7,9 +7,6 @@
  * Implements multi-track recording where each speaking user is recorded to their own .opus file
  */
 
-import dotenv from 'dotenv';
-dotenv.config();
-
 import {
   ChannelType,
   EmbedBuilder,

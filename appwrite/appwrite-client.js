@@ -14,9 +14,6 @@
  * fall back to its local data.json without crashing.
  */
 
-import dotenv from 'dotenv';
-dotenv.config();
-
 import { Client, Databases, ID, Query, AppwriteException } from 'node-appwrite';
 import { DB_ID, COLLECTION_IDS } from './collection-ids.js';
 
@@ -29,6 +26,37 @@ const PROJECT_ID = process.env.APPWRITE_PROJECT_ID;
 const API_KEY    = process.env.APPWRITE_API_KEY;
 
 let _databases = null;
+
+function isRetryableError(err) {
+  const msg = String(err?.message || '').toLowerCase();
+  const code = Number(err?.code);
+  if ([408, 425, 429, 500, 502, 503, 504].includes(code)) return true;
+  return (
+    msg.includes('timeout') ||
+    msg.includes('timed out') ||
+    msg.includes('econnreset') ||
+    msg.includes('econnrefused') ||
+    msg.includes('enotfound') ||
+    msg.includes('network')
+  );
+}
+
+async function withRetry(op, label, retries = 3) {
+  let attempt = 0;
+  let lastErr = null;
+  while (attempt < retries) {
+    attempt += 1;
+    try {
+      return await op();
+    } catch (err) {
+      lastErr = err;
+      if (!isRetryableError(err) || attempt >= retries) break;
+      const delayMs = 250 * Math.pow(2, attempt - 1);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastErr || new Error(`${label} failed`);
+}
 
 function getDB() {
   if (_databases) return _databases;
@@ -55,7 +83,10 @@ async function upsertDoc(collectionId, documentId, payload) {
   const db = getDB();
   if (!db) return null;
   try {
-    return await db.upsertDocument(DB_ID, collectionId, documentId, payload);
+    return await withRetry(
+      () => db.upsertDocument(DB_ID, collectionId, documentId, payload),
+      `upsertDoc ${collectionId}/${documentId}`
+    );
   } catch (e) {
     console.warn(`[Appwrite] upsertDoc failed (${collectionId}/${documentId}): ${e.message}`);
     return null;
@@ -69,7 +100,10 @@ async function getDoc(collectionId, documentId) {
   const db = getDB();
   if (!db) return null;
   try {
-    return await db.getDocument(DB_ID, collectionId, documentId);
+    return await withRetry(
+      () => db.getDocument(DB_ID, collectionId, documentId),
+      `getDoc ${collectionId}/${documentId}`
+    );
   } catch (e) {
     if (e instanceof AppwriteException && e.code === 404) return null;
     console.warn(`[Appwrite] getDoc failed (${collectionId}/${documentId}): ${e.message}`);
@@ -91,7 +125,10 @@ async function listDocs(collectionId, queries = []) {
     while (true) {
       const q = [...queries, Query.limit(PAGE_SIZE)];
       if (cursor) q.push(Query.cursorAfter(cursor));
-      const res = await db.listDocuments(DB_ID, collectionId, q);
+      const res = await withRetry(
+        () => db.listDocuments(DB_ID, collectionId, q),
+        `listDocs ${collectionId}`
+      );
       all = all.concat(res.documents);
       if (res.documents.length < PAGE_SIZE) break;
       cursor = res.documents[res.documents.length - 1].$id;
@@ -111,7 +148,10 @@ async function deleteDoc(collectionId, documentId) {
   const db = getDB();
   if (!db) return false;
   try {
-    await db.deleteDocument(DB_ID, collectionId, documentId);
+    await withRetry(
+      () => db.deleteDocument(DB_ID, collectionId, documentId),
+      `deleteDoc ${collectionId}/${documentId}`
+    );
     return true;
   } catch (e) {
     if (e instanceof AppwriteException && e.code === 404) return true; // already gone

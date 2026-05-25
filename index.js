@@ -16,7 +16,9 @@
  */
 
 import fs from 'fs';
+import { runStartupPreflight } from './startup-check.js';
 import dotenv from 'dotenv';
+runStartupPreflight();
 dotenv.config();
 
 import * as appwriteClient from './appwrite/appwrite-client.js';
@@ -821,17 +823,26 @@ if (db.reviewConfig && db.reviewConfig.delayDays && !db.reviewConfig.delaySecond
 
 loadDB();
 
-// After the synchronous JSON load, try to pull fresher data from Appwrite.
-// This runs in the background so the bot starts quickly regardless.
-if (appwriteClient.isConfigured()) {
-  appwriteClient.loadDB().then(appwriteData => {
+async function runInitialAppwriteLoad() {
+  if (!appwriteClient.isConfigured()) {
+    console.log('[Appwrite] Not configured; running in local JSON mode.');
+    return;
+  }
+
+  console.log('[Appwrite] Configured; starting initial background load.');
+  try {
+    const appwriteData = await appwriteClient.loadDB();
     if (appwriteData && Object.keys(appwriteData).length > 0) {
       Object.assign(db, appwriteData);
-      // Persist the Appwrite data to JSON (backup) without re-triggering a sync
+      // Persist Appwrite data to JSON (backup) without re-triggering a sync.
       try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch (e) { /* non-fatal */ }
-      console.log('[Appwrite] Loaded latest data from Appwrite.');
+      console.log('[Appwrite] Initial background load completed.');
+      return;
     }
-  }).catch(e => console.warn('[Appwrite] Initial load failed, using data.json:', e.message));
+    console.log('[Appwrite] Initial background load returned no records; using local JSON state.');
+  } catch (e) {
+    console.warn('[Appwrite] Initial load failed, using data.json:', e.message);
+  }
 }
 
 // Helper: build a standardized archive embed for an ad entry
@@ -1531,6 +1542,11 @@ client.once('ready', async () => {
 
   await registerCommands();
   try { client.user.setActivity('DM for ModMail', { type: 3 }); } catch (e) {}
+
+  // Delay the first Appwrite pull until after the Discord session is fully ready.
+  setTimeout(() => {
+    runInitialAppwriteLoad().catch(e => console.warn('[Appwrite] Delayed initial load failed:', e.message));
+  }, 5000);
 });
 
 // process handlers

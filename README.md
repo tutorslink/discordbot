@@ -128,11 +128,20 @@ npm install
 node index.js
 ```
 
+### Wispbyte deployment notes (important)
+
+- Set variables in the Wispbyte environment/variables panel.
+- Do not upload a `.env` directory. If a `.env` path exists, it must be a file.
+- Use startup command: `node index.js`
+- Confirm the working directory is `/home/container` so `package.json` is resolved correctly.
+
+If logs show `ENOTDIR` for `/home/container/.env/package.json`, delete the `.env` directory on the host and re-add variables via the panel.
+
 ---
 
 ## Configuration
 
-Copy [`.env.example`](.env.example) to `.env` and fill in the values for your server. Required variables are marked with ✱.
+Create a `.env` file (local development) and fill in the values for your server. On Wispbyte, prefer setting the same values in the environment/variables panel. Required variables are marked with ✱.
 
 | Variable | Required | Description |
 |---|---|---|
