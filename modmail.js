@@ -37,12 +37,12 @@ const {
   STAFF_CHAT_ID
 } = process.env;
 
-// Modmail purpose categories - maps purpose key to category ID
-const MODMAIL_PURPOSE_CATEGORIES = {
-  tutor_application:      '1460567488634032200', // "Tutor Applications" category
-  complaints_suggestions: '1460567621186621524', // "Complaints & Suggestions" category
-  customer_service:       '1481293582634848318', // "Student Enquiries" / customer service category
-  payment:                '1481293527760633990'  // "Payment" category
+// Default modmail purpose categories - used unless staff overrides them in saved config
+const DEFAULT_MODMAIL_PURPOSE_CATEGORIES = {
+  tutor_application:      '1460567488634032200', // Tutor Applications
+  complaints_suggestions: '1460567621186621524', // Complaints & Suggestions
+  customer_service:       '1481293582634848318', // Client Support
+  payment:                '1481293527760633990'  // Payments
 };
 
 // Single-letter codes to append to ticket numbers (number stays the same)
@@ -54,17 +54,25 @@ const PURPOSE_LETTER = {
 };
 
 const MODMAIL_PURPOSE_OPTIONS = [
-  { value: 'tutor_application', label: 'Wish to apply as a tutor', description: 'Apply to become a tutor on Tutors Link' },
-  { value: 'complaints_suggestions', label: 'Complaints/Suggestions', description: 'Complain or suggest regarding tutors, students, or Tutors Link as a whole' },
-  { value: 'customer_service', label: 'Need help with procedure', description: 'Help with finding tutors, applying, paying, or other procedures' },
-  { value: 'payment', label: 'Payment', description: 'Anything related to giving or receiving payments' }
+  { value: 'tutor_application', label: 'Tutor Applications', description: 'Apply to become a tutor on Tutors Link' },
+  { value: 'complaints_suggestions', label: 'Complaints & Suggestions', description: 'Complain or suggest regarding tutors, students, or Tutors Link as a whole' },
+  { value: 'customer_service', label: 'Client Support', description: 'Help with finding tutors, applying, paying, or other procedures' },
+  { value: 'payment', label: 'Payments', description: 'Anything related to giving or receiving payments' }
 ];
 
 export default function initModmail({ client, db, saveDB, config = {}, notifyError = null }) {
   if (!client || !db || !saveDB) throw new Error('initModmail missing args');
 
-  const MODMAIL_CATEGORY_ID = config.MODMAIL_CATEGORY_ID ?? '1442945193547665529'; // "ModMail" category (production)
+  db.modmail = db.modmail || {};
+  db.modmail.config = db.modmail.config || {};
+
+  const MODMAIL_CATEGORY_ID = db.modmail.config.defaultCategoryId ?? config.MODMAIL_CATEGORY_ID ?? '1442945193547665529'; // default modmail category
   const MODMAIL_TRANSCRIPTS_CHANNEL_ID = config.MODMAIL_TRANSCRIPTS_CHANNEL_ID ?? ENV_MODMAIL_TRANSCRIPTS_CHANNEL_ID;
+  const MODMAIL_PURPOSE_CATEGORIES = {
+    ...DEFAULT_MODMAIL_PURPOSE_CATEGORIES,
+    ...(config.MODMAIL_PURPOSE_CATEGORIES || {}),
+    ...(db.modmail.config.purposeCategories || {})
+  };
 
   const STALE_CHANNEL_MSG = 'Your support channel no longer exists (it may have been deleted by staff). Press **Close Ticket** below to clear this ticket so you can open a new one.';
 
@@ -86,6 +94,22 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
       }
       return false;
     } catch { return false; }
+  }
+
+  function slugifyChannelName(raw) {
+    const base = String(raw || '').toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    return base || 'user';
+  }
+
+  async function buildModmailChannelName(userId, member = null) {
+    let username = member?.user?.username || '';
+    if (!username) {
+      const user = await client.users.fetch(userId).catch(() => null);
+      if (user) username = user.username;
+    }
+    const suffix = String(userId || '').slice(-4) || '0000';
+    const slug = slugifyChannelName(username || userId);
+    return `modmail-${slug}-${suffix}`.slice(0, 90);
   }
 
   // Check if user has admin permissions or is staff (bypasses cooldowns)
@@ -223,7 +247,7 @@ ${String(err && (err.stack || err))}`;
       }
 
       const opts = {
-        name: code,
+        name: await buildModmailChannelName(userId, member),
         type: ChannelType.GuildText,
         permissionOverwrites: overwrites
       };

@@ -259,9 +259,35 @@ function getSubjectsForLevel(levelKey, { fallbackToAll = true } = {}) {
   return filteredSubjects.length > 0 || !fallbackToAll ? filteredSubjects : allSubjects;
 }
 
+function normalizeSubjectKey(rawInput) {
+  let value = String(rawInput || '').toLowerCase().trim();
+  if (!value) return '';
+  value = value.replace(/&/g, 'and');
+  value = value.replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language|test\s*prep)\s+/i, '');
+  value = value.replace(/[^a-z0-9\s]/g, ' ');
+  value = value.replace(/\s+/g, ' ').trim();
+
+  const replacements = [
+    { from: /\bmathematics\b/g, to: 'maths' },
+    { from: /\bmath\b/g, to: 'maths' },
+    { from: /\badditional\b/g, to: 'add' },
+    { from: /\badd\s+maths?\b/g, to: 'add maths' },
+    { from: /\bict\b/g, to: 'information technology' },
+    { from: /\binfo\s*technology\b/g, to: 'information technology' },
+    { from: /\benglish\s+as\s+a\s+second\s+language\b/g, to: 'english second language' },
+    { from: /\bfirst\s+language\s+english\b/g, to: 'first language english' }
+  ];
+  for (const { from, to } of replacements) {
+    value = value.replace(from, to);
+  }
+
+  return value.replace(/\s+/g, ' ').trim();
+}
+
 function resolveCanonicalSubject(rawInput, { levelKey = null, fallbackToAll = true } = {}) {
   const input = String(rawInput || '').trim();
   if (!input) return { subject: null, suggestions: [] };
+  const inputKey = normalizeSubjectKey(input);
   const pools = [];
   const levelSubjects = getSubjectsForLevel(levelKey, { fallbackToAll });
   pools.push(levelSubjects);
@@ -271,6 +297,9 @@ function resolveCanonicalSubject(rawInput, { levelKey = null, fallbackToAll = tr
   for (const subjects of pools) {
     const exact = subjects.find(subject => subject.toLowerCase() === input.toLowerCase());
     if (exact) return { subject: exact, suggestions: [] };
+    const aliasMatches = inputKey ? subjects.filter(subject => normalizeSubjectKey(subject) === inputKey) : [];
+    if (aliasMatches.length === 1) return { subject: aliasMatches[0], suggestions: [] };
+    if (aliasMatches.length > 1) return { subject: null, suggestions: aliasMatches.slice(0, 5) };
     const startsWith = subjects.filter(subject => subject.toLowerCase().startsWith(input.toLowerCase()));
     if (startsWith.length === 1) return { subject: startsWith[0], suggestions: [] };
     const includes = subjects.filter(subject => subject.toLowerCase().includes(input.toLowerCase()));
@@ -323,6 +352,105 @@ function formatTutorResolutionError(rawInput, suggestions = []) {
   const base = `Could not match tutor "${String(rawInput || '').trim()}".`;
   if (!suggestions.length) return `${base} Use a mention, user ID, username, or tag for a tutor already in the database.`;
   return `${base} Did you mean: ${suggestions.join(', ')}?`;
+}
+
+function resolveDiscordUserInput(rawInput) {
+  const input = String(rawInput || '').trim();
+  if (!input) return { userId: null };
+  const mentionMatch = input.match(/^<@!?(\d+)>$/);
+  const byId = mentionMatch ? mentionMatch[1] : input;
+  if (/^\d+$/.test(byId)) return { userId: byId };
+  return { userId: null };
+}
+
+function slugifyChannelName(raw) {
+  const base = String(raw || '').toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  return base || 'user';
+}
+
+function buildTicketChannelName(user, subject = '') {
+  const username = user?.username || user?.tag || '';
+  const suffix = String(user?.id || '').slice(-4) || '0000';
+  const userSlug = slugifyChannelName(username);
+  const subjectSlug = subject ? slugifyChannelName(subject) : '';
+  const base = subjectSlug ? `ticket-${userSlug}-${subjectSlug}` : `ticket-${userSlug}`;
+  return `${base}-${suffix}`.slice(0, 90);
+}
+
+function findOpenTicketForUserSubject(userId, subject) {
+  const targetKey = normalizeSubjectKey(subject);
+  if (!userId || !targetKey) return null;
+  for (const [code, ticket] of Object.entries(db.tickets || {})) {
+    if (!ticket || String(ticket.studentId) !== String(userId)) continue;
+    const ticketKey = normalizeSubjectKey(ticket.subject);
+    if (ticketKey && ticketKey === targetKey) return { code, ticket };
+  }
+  return null;
+}
+
+function getTutorIdsForLevel(levelKey) {
+  if (!levelKey) return getAllTutorIds();
+  const tutorIds = new Set();
+  for (const [subject, ids] of Object.entries(db.subjectTutors || {})) {
+    const storedLevel = db.subjectLevels && db.subjectLevels[subject];
+    const effectiveLevel = storedLevel || detectLevelFromSubject(subject) || 'other';
+    if (effectiveLevel !== levelKey) continue;
+    for (const id of ids || []) tutorIds.add(String(id));
+  }
+  return sortStringsCaseInsensitive(Array.from(tutorIds));
+}
+
+async function handleOpenCreateAdModal(interaction, { requester, rawSubjectInput = '', origin = null, originChannel = null, levelKeyFromModmail = null, selectedTutorId = null } = {}) {
+  let levelKey = normalizeCreateAdLevelKey(rawSubjectInput) || (levelKeyFromModmail ? normalizeCreateAdLevelKey(levelKeyFromModmail) : 'other');
+  if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
+    return interaction.reply({ content: 'Only the command invoker or staff may open this modal.', ephemeral: true }).catch(() => {});
+  }
+
+  try {
+    const subjectsForLevel = getSubjectsForLevel(levelKey);
+    if (subjectsForLevel.length === 0) {
+      return interaction.reply({ content: 'No subjects available for this level. Add subjects first with `/subject add`.', ephemeral: true }).catch(() => {});
+    }
+    const subjectExamples = subjectsForLevel.slice(0, 3).join(', ');
+    const resolved = resolveCanonicalSubject(rawSubjectInput, { levelKey, fallbackToAll: true });
+    const prefilledSubject = resolved.subject || rawSubjectInput || '';
+    const subjectInput = new TextInputBuilder()
+      .setCustomId('ad_subject')
+      .setLabel(clampLabel('Subject'))
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setPlaceholder(clampLabel(subjectExamples ? `Type a subject, e.g. ${subjectExamples}` : 'Type the subject name', 100))
+      .setValue(String(prefilledSubject || '').substring(0, 100));
+    let tutorPrefill = '';
+    if (selectedTutorId) tutorPrefill = `<@${selectedTutorId}>`;
+    const tutorInput = new TextInputBuilder()
+      .setCustomId('ad_tutor')
+      .setLabel(clampLabel('Tutor (Optional)'))
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setPlaceholder('Mention, user ID, username, or tag')
+      .setValue(tutorPrefill.substring(0, 100));
+
+    const subjectDetailsInput = new TextInputBuilder().setCustomId('ad_subject_details').setLabel(clampLabel('Subject Level & Codes')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Subject Level: \nSubject codes: ', 1000));
+    const tutorDetailsInput = new TextInputBuilder().setCustomId('ad_tutor_details').setLabel(clampLabel('Tutor Details & Pricing')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Languages: \nClass Type: \nClass Duration: \nClasses/week: \nClasses/month: \nPrice per Class (USD) for Group classes: \nPrice per Class (USD) for 1-on-1 classes: \nTime zone:', 1000));
+    const optionalFieldsInput = new TextInputBuilder().setCustomId('ad_optional_fields').setLabel(clampLabel('Optional: Message, Testimonials, Payment, Color, Role')).setStyle(TextInputStyle.Paragraph).setRequired(false).setValue(clampLabel('Message from tutor:\nStudent Testimonials:\nPayment Terms: 100% upfront before classes begin\nColor: \nRole ID: ', 1000));
+
+    const modal = new ModalBuilder()
+      .setCustomId(`createad_modal|${interaction.id}|${levelKey}|${origin || ''}|${originChannel || ''}|${rawSubjectInput}`)
+      .setTitle('Create Ad Details')
+      .addComponents(
+        new ActionRowBuilder().addComponents(subjectInput),
+        new ActionRowBuilder().addComponents(tutorInput),
+        new ActionRowBuilder().addComponents(subjectDetailsInput),
+        new ActionRowBuilder().addComponents(tutorDetailsInput),
+        new ActionRowBuilder().addComponents(optionalFieldsInput)
+      );
+    await interaction.showModal(modal);
+  } catch (err) {
+    console.error('open_createad_modal failed', err);
+    try { notifyStaffError(err, 'open_createad_modal', interaction); } catch (e) {}
+    await interaction.reply({ content: 'Could not open ad creation modal, try again.', ephemeral: true }).catch(() => {});
+  }
 }
 
 function buildSubjectSelectOptions(subjects) {
@@ -1045,8 +1173,9 @@ try {
     db,
     saveDB,
     config: {
-      MODMAIL_CATEGORY_ID: MODMAIL_CATEGORY_ID ?? MODMAIL_CATEGORY_ID,
-      MODMAIL_TRANSCRIPTS_CHANNEL_ID: MODMAIL_TRANSCRIPTS_CHANNEL_ID ?? MODMAIL_TRANSCRIPTS_CHANNEL_ID
+      MODMAIL_CATEGORY_ID,
+      MODMAIL_TRANSCRIPTS_CHANNEL_ID,
+      MODMAIL_PURPOSE_CATEGORIES: db.modmail?.config?.purposeCategories || {}
     },
     notifyError: async (err, ctx = {}) => {
       try {
@@ -1118,10 +1247,11 @@ async function postToTutorsFeed(guild, ticketCode, subject, firstMessage, ticket
 
   const tutorIds = db.subjectTutors[subject] || [];
   const mentionText = tutorIds.length ? '\n\nNotifying: ' + tutorIds.map(id => `<@${id}>`).join(' ') : '';
-  const content = `New request, Student **${ticketCode}**, Subject: **${subject}**\nFirst message: ${firstMessage}${mentionText}`;
+  const content = `New request, Subject: **${subject}** (ticket **${ticketCode}**)\nFirst message: ${firstMessage}${mentionText}`;
 
   const tutorsMessage = await tutorsFeed.send({ content }).catch(err => { throw err; });
-  const thread = await tutorsMessage.startThread({ name: `Conversation ${ticketCode}`, autoArchiveDuration: 1440 }).catch(() => null);
+  const threadName = `Enquiry ${subject || ticketCode}`;
+  const thread = await tutorsMessage.startThread({ name: threadName.substring(0, 100), autoArchiveDuration: 1440 }).catch(() => null);
   if (thread) {
     ticket.tutorThreadId = thread.id;
     await thread.send(
@@ -1326,11 +1456,11 @@ async function registerCommands() {
     { name: 'help', description: 'Show available user commands' },
     { name: 'staffhelp', description: 'Show staff commands', default_member_permissions: PermissionFlagsBits.ManageMessages.toString() },
     { name: 'bumpleaderboard', description: 'Show the bump leaderboard - see who has bumped the server the most!' },
-    // student & review commands - FIXED: Added missing description for 'action' option
-    { name: 'student', description: 'Manage student assignments, add or remove student from tutor', options: [
+    // student & review commands
+    { name: 'student', description: 'Manage student assignments by selecting the student and tutor users', options: [
         { name: 'action', type: 3, required: true, description: 'Add or remove a student from a tutor', choices: [{ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }] },
-        { name: 'studentid', type: 3, required: true, description: 'Student user id' },
-        { name: 'tutorid', type: 3, required: true, description: 'Tutor user id' },
+        { name: 'student', type: 6, required: true, description: 'Student user' },
+        { name: 'tutor', type: 6, required: true, description: 'Tutor user' },
         { name: 'subject', type: 3, required: false, description: 'Subject (optional)' }
       ], default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
@@ -1344,6 +1474,21 @@ async function registerCommands() {
       ], default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
     { name: 'authentication', description: 'Generate authentication code for webapp access (staff only)', default_member_permissions: PermissionFlagsBits.ManageMessages.toString() },
+    {
+      name: 'modmailmap',
+      description: 'Set the modmail category for a purpose using a category picker',
+      options: [
+        { name: 'purpose', type: 3, required: true, description: 'Purpose to configure', choices: [
+          { name: 'Default modmail category', value: 'default' },
+          { name: 'Tutor Applications', value: 'tutor_application' },
+          { name: 'Complaints & Suggestions', value: 'complaints_suggestions' },
+          { name: 'Client Support', value: 'customer_service' },
+          { name: 'Payments', value: 'payment' }
+        ] },
+        { name: 'category', type: 7, required: true, description: 'Select a Discord category', channel_types: [ChannelType.GuildCategory] }
+      ],
+      default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
+    },
     {
       name: 'migrateads',
       description: 'Re-post all existing ads into their category channels with a short version (staff only)',
@@ -1547,6 +1692,12 @@ client.on('interactionCreate', async (interaction) => {
         // unchanged
         const subject = custom.split('|')[1];
         const user = interaction.user;
+        const existing = findOpenTicketForUserSubject(user.id, subject);
+        if (existing) {
+          const existingChannel = await interaction.guild.channels.fetch(existing.ticket.ticketChannelId).catch(() => null);
+          const where = existingChannel ? ` in <#${existingChannel.id}>` : '';
+          return interaction.reply({ content: `You already have an open ticket for **${existing.ticket.subject}**${where}. Please close it before opening another.`, ephemeral: true }).catch(() => {});
+        }
         const last = db.cooldowns[user.id] || 0;
         const cooldownMs = 3 * 60 * 1000;
         const elapsed = Date.now() - last;
@@ -1566,7 +1717,7 @@ client.on('interactionCreate', async (interaction) => {
           { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
           { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageMessages, PermissionsBitField.Flags.EmbedLinks] }
         ];
-        const channelData = { name: `ticket-${code}`, type: 0, permissionOverwrites: overwrites };
+        const channelData = { name: buildTicketChannelName(user, subject), type: 0, permissionOverwrites: overwrites };
         if (TICKET_CATEGORY_ID) channelData.parent = TICKET_CATEGORY_ID;
         const ticketChannel = await guild.channels.create(channelData).catch(err => { console.error('create channel failed', err); try { notifyStaffError(err, 'ad_enquire create channel', interaction); } catch {} return null; });
         if (!ticketChannel) return interaction.editReply({ content: `Failed to create ticket channel.`, ephemeral: true }).catch(() => {});
@@ -1577,6 +1728,8 @@ client.on('interactionCreate', async (interaction) => {
         db.tickets[code] = {
           ticketChannelId: ticketChannel.id,
           studentId: user.id,
+          studentName: user.username,
+          studentTag: user.tag,
           tutorMessageId: null,
           tutorThreadId: null,
           subject,
@@ -1590,8 +1743,8 @@ client.on('interactionCreate', async (interaction) => {
         db.cooldowns[user.id] = Date.now();
         saveDB();
 
-        await interaction.editReply({ content: `Ticket created, code **${code}**. See <#${ticketChannel.id}>.` }).catch(() => {});
-        await ticketChannel.send(`Ticket ${code} created for ${user.tag}, subject: ${subject}`).catch(() => {});
+        await interaction.editReply({ content: `Ticket created for <@${user.id}> (code **${code}**). See <#${ticketChannel.id}>.` }).catch(() => {});
+        await ticketChannel.send(`Ticket created for <@${user.id}> (code **${code}**), subject: ${subject}`).catch(() => {});
         return;
       }
       // Button to open the create-ad modal after usernames were resolved
@@ -1602,53 +1755,7 @@ client.on('interactionCreate', async (interaction) => {
         const origin = parts[3] || null;
         const originChannel = parts[4] || null;
         const levelKeyFromModmail = parts[5] || null; // For modmail: level is pre-selected
-        let levelKey = normalizeCreateAdLevelKey(rawSubjectInput) || (levelKeyFromModmail ? normalizeCreateAdLevelKey(levelKeyFromModmail) : 'other');
-        if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
-          return interaction.reply({ content: 'Only the command invoker or staff may open this modal.', ephemeral: true }).catch(() => {});
-        }
-
-        // Build the modal now using cached/db usernames (fast)
-        try {
-          const subjectsForLevel = getSubjectsForLevel(levelKey);
-          if (subjectsForLevel.length === 0) {
-            return interaction.reply({ content: 'No subjects available for this level. Add subjects first with `/subject add`.', ephemeral: true }).catch(() => {});
-          }
-          const subjectExamples = subjectsForLevel.slice(0, 3).join(', ');
-          const prefilledSubject = resolveCanonicalSubject(rawSubjectInput, { levelKey, fallbackToAll: true }).subject || '';
-          const subjectInput = new TextInputBuilder()
-            .setCustomId('ad_subject')
-            .setLabel(clampLabel('Subject'))
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-            .setPlaceholder(clampLabel(subjectExamples ? `Type a subject, e.g. ${subjectExamples}` : 'Type the subject name', 100))
-            .setValue(String(prefilledSubject || '').substring(0, 100));
-          const tutorInput = new TextInputBuilder()
-            .setCustomId('ad_tutor')
-            .setLabel(clampLabel('Tutor (Optional)'))
-            .setStyle(TextInputStyle.Short)
-            .setRequired(false)
-            .setPlaceholder('Mention, user ID, username, or tag');
-
-          const subjectDetailsInput = new TextInputBuilder().setCustomId('ad_subject_details').setLabel(clampLabel('Subject Level & Codes')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Subject Level: \nSubject codes: ', 1000));
-          const tutorDetailsInput = new TextInputBuilder().setCustomId('ad_tutor_details').setLabel(clampLabel('Tutor Details & Pricing')).setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(clampLabel('Languages: \nClass Type: \nClass Duration: \nClasses/week: \nClasses/month: \nPrice per Class (USD) for Group classes: \nPrice per Class (USD) for 1-on-1 classes: \nTime zone:', 1000));
-          const optionalFieldsInput = new TextInputBuilder().setCustomId('ad_optional_fields').setLabel(clampLabel('Optional: Message, Testimonials, Payment, Color, Role')).setStyle(TextInputStyle.Paragraph).setRequired(false).setValue(clampLabel('Message from tutor:\nStudent Testimonials:\nPayment Terms: 100% upfront before classes begin\nColor: \nRole ID: ', 1000));
-
-          const modal = new ModalBuilder()
-            .setCustomId(`createad_modal|${interaction.id}|${levelKey}|${origin || ''}|${originChannel || ''}|${rawSubjectInput}`)
-            .setTitle('Create Ad Details')
-            .addComponents(
-              new ActionRowBuilder().addComponents(subjectInput),
-              new ActionRowBuilder().addComponents(tutorInput),
-              new ActionRowBuilder().addComponents(subjectDetailsInput),
-              new ActionRowBuilder().addComponents(tutorDetailsInput),
-              new ActionRowBuilder().addComponents(optionalFieldsInput)
-            );
-          await interaction.showModal(modal);
-        } catch (err) {
-          console.error('open_createad_modal failed', err);
-          try { notifyStaffError(err, 'open_createad_modal', interaction); } catch (e) {}
-          await interaction.reply({ content: 'Could not open ad creation modal, try again.', ephemeral: true }).catch(() => {});
-        }
+        await handleOpenCreateAdModal(interaction, { requester, rawSubjectInput, origin, originChannel, levelKeyFromModmail });
         return;
       }
 
@@ -2933,11 +3040,12 @@ client.on('interactionCreate', async (interaction) => {
           return interaction.reply({ content: 'Invalid category selected.', ephemeral: true }).catch(() => {});
         }
 
+        const subjectsForLevel = getSubjectsForLevel(levelKey);
+        if (!subjectsForLevel.length) {
+          return interaction.reply({ content: 'No subjects available for this level. Add subjects first with `/subject add`.', ephemeral: true }).catch(() => {});
+        }
+
         const levelLabel = CREATEAD_LEVEL_LABELS[levelKey] || 'Selected';
-        const openButton = new ButtonBuilder()
-          .setCustomId(`open_createad_modal|${requester}|${levelKey}`)
-          .setLabel('Open Create Ad Modal')
-          .setStyle(ButtonStyle.Primary);
 
         // Keep the select menu so staff can change their mind
         const levelOptions = [
@@ -2959,19 +3067,120 @@ client.on('interactionCreate', async (interaction) => {
           .addOptions(levelOptions)
           .setRequired(true);
 
+        const subjectOptions = buildSubjectSelectOptions(subjectsForLevel);
+        const subjectSelect = buildPaginatedSelectMenu({
+          baseCustomId: `createad_subject|${requester}|${levelKey}`,
+          placeholder: 'Select subject (type to search)',
+          options: subjectOptions,
+          page: 0,
+          required: true
+        });
+
         const rowSelect = new ActionRowBuilder().addComponents(levelSelect);
-        const rowButton = new ActionRowBuilder().addComponents(openButton);
+        const rowSubject = new ActionRowBuilder().addComponents(subjectSelect);
 
         try {
           await interaction.update({
-            content: `Category selected: **${levelLabel}**. Now open the modal.`,
-            components: [rowSelect, rowButton]
+            content: `Category selected: **${levelLabel}**. Now choose a subject.`,
+            components: [rowSelect, rowSubject]
           });
         } catch (e) {
           try {
-            await interaction.reply({ content: `Category selected: **${levelLabel}**. Now open the modal.`, components: [rowSelect, rowButton], ephemeral: true });
+            await interaction.reply({ content: `Category selected: **${levelLabel}**. Now choose a subject.`, components: [rowSelect, rowSubject], ephemeral: true });
           } catch (err) {}
         }
+        return;
+      }
+
+      // CreateAd subject select (after level chosen)
+      if (interaction.customId && interaction.customId.startsWith('createad_subject|')) {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
+        const { baseCustomId, page } = parsePagedCustomId(interaction.customId);
+        const parts = baseCustomId.split('|');
+        const requester = parts[1];
+        const levelKey = parts[2];
+        if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
+          return interaction.reply({ content: 'Only the command invoker or staff may select the subject.', ephemeral: true }).catch(() => {});
+        }
+
+        const chosen = interaction.values && interaction.values[0];
+        if (!chosen) return interaction.reply({ content: 'No subject selected.', ephemeral: true }).catch(() => {});
+
+        if (isPagedNavigationValue(chosen)) {
+          const subjectsForLevel = getSubjectsForLevel(levelKey);
+          const subjectOptions = buildSubjectSelectOptions(subjectsForLevel);
+          const nextPage = getPagedNavigationTarget(page, chosen);
+          const subjectSelect = buildPaginatedSelectMenu({
+            baseCustomId: `createad_subject|${requester}|${levelKey}`,
+            placeholder: 'Select subject (type to search)',
+            options: subjectOptions,
+            page: nextPage,
+            required: true
+          });
+          const rowSubject = new ActionRowBuilder().addComponents(subjectSelect);
+          const rows = Array.isArray(interaction.message?.components) && interaction.message.components.length > 0
+            ? [interaction.message.components[0], rowSubject]
+            : [rowSubject];
+          return interaction.update({ components: rows }).catch(() => {});
+        }
+
+        const subject = chosen;
+        const tutorIds = getTutorIdsForLevel(levelKey);
+        const tutorOptions = await buildTutorSelectOptions(interaction.guild, tutorIds, {
+          includeNoneOption: true,
+          noneLabel: 'No tutor selected',
+          noneDescription: 'Leave tutor unassigned'
+        });
+        const tutorSelect = buildPaginatedSelectMenu({
+          baseCustomId: `createad_tutor|${requester}|${levelKey}|${encodeURIComponent(subject)}`,
+          placeholder: 'Select tutor (type to search)',
+          options: tutorOptions,
+          page: 0,
+          required: true
+        });
+        const rowTutor = new ActionRowBuilder().addComponents(tutorSelect);
+        return interaction.update({ content: `Subject selected: **${subject}**. Now select a tutor (or choose no tutor).`, components: [interaction.message.components[0], rowTutor] }).catch(() => {});
+      }
+
+      // CreateAd tutor select (after subject chosen)
+      if (interaction.customId && interaction.customId.startsWith('createad_tutor|')) {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
+        const { baseCustomId, page } = parsePagedCustomId(interaction.customId);
+        const parts = baseCustomId.split('|');
+        const requester = parts[1];
+        const levelKey = parts[2];
+        const subject = decodeURIComponent(parts.slice(3).join('|'));
+        if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
+          return interaction.reply({ content: 'Only the command invoker or staff may select the tutor.', ephemeral: true }).catch(() => {});
+        }
+
+        const chosen = interaction.values && interaction.values[0];
+        if (!chosen) return interaction.reply({ content: 'No tutor selected.', ephemeral: true }).catch(() => {});
+
+        if (isPagedNavigationValue(chosen)) {
+          const tutorIds = getTutorIdsForLevel(levelKey);
+          const tutorOptions = await buildTutorSelectOptions(interaction.guild, tutorIds, {
+            includeNoneOption: true,
+            noneLabel: 'No tutor selected',
+            noneDescription: 'Leave tutor unassigned'
+          });
+          const nextPage = getPagedNavigationTarget(page, chosen);
+          const tutorSelect = buildPaginatedSelectMenu({
+            baseCustomId: `createad_tutor|${requester}|${levelKey}|${encodeURIComponent(subject)}`,
+            placeholder: 'Select tutor (type to search)',
+            options: tutorOptions,
+            page: nextPage,
+            required: true
+          });
+          const rowTutor = new ActionRowBuilder().addComponents(tutorSelect);
+          const rows = Array.isArray(interaction.message?.components) && interaction.message.components.length > 0
+            ? [interaction.message.components[0], rowTutor]
+            : [rowTutor];
+          return interaction.update({ components: rows }).catch(() => {});
+        }
+
+        const selectedTutorId = chosen === 'none' ? null : chosen;
+        await handleOpenCreateAdModal(interaction, { requester, rawSubjectInput: subject, levelKeyFromModmail: levelKey, selectedTutorId });
         return;
       }
 
@@ -3512,6 +3721,12 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ content: 'Creating your ticket...', ephemeral: true }).catch(() => {});
 
         const subject = interaction.options.getString('subject', true);
+        const existing = findOpenTicketForUserSubject(interaction.user.id, subject);
+        if (existing) {
+          const existingChannel = await interaction.guild.channels.fetch(existing.ticket.ticketChannelId).catch(() => null);
+          const where = existingChannel ? ` in <#${existingChannel.id}>` : '';
+          return interaction.editReply({ content: `You already have an open ticket for **${existing.ticket.subject}**${where}. Please close it before opening another.` }).catch(() => {});
+        }
         const guild = interaction.guild;
         const code = generateTicketNumber();
 
@@ -3521,7 +3736,7 @@ client.on('interactionCreate', async (interaction) => {
           { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
           { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageMessages, PermissionsBitField.Flags.EmbedLinks] }
         ];
-        const channelData = { name: `ticket-${code}`, type: 0, permissionOverwrites: overwrites };
+        const channelData = { name: buildTicketChannelName(interaction.user, subject), type: 0, permissionOverwrites: overwrites };
         if (TICKET_CATEGORY_ID) channelData.parent = TICKET_CATEGORY_ID;
         const ticketChannel = await guild.channels.create(channelData).catch(err => { console.error('create channel failed', err); try { notifyStaffError(err, 'enquire create channel', interaction); } catch (e) {} return null; });
         if (!ticketChannel) return interaction.editReply({ content: `Failed to create ticket channel.`, ephemeral: true }).catch(() => {});
@@ -3532,6 +3747,8 @@ client.on('interactionCreate', async (interaction) => {
         db.tickets[code] = {
           ticketChannelId: ticketChannel.id,
           studentId: interaction.user.id,
+          studentName: interaction.user.username,
+          studentTag: interaction.user.tag,
           tutorMessageId: null,
           tutorThreadId: null,
           subject,
@@ -3545,8 +3762,8 @@ client.on('interactionCreate', async (interaction) => {
         db.cooldowns[interaction.user.id] = Date.now();
         saveDB();
 
-        await interaction.editReply({ content: `Ticket created, code **${code}**. Continue in <#${ticketChannel.id}>.` }).catch(() => {});
-        await ticketChannel.send(`Ticket ${code} created for ${interaction.user.tag}, subject: ${subject}`).catch(() => {});
+        await interaction.editReply({ content: `Ticket created for <@${interaction.user.id}> (code **${code}**). Continue in <#${ticketChannel.id}>.` }).catch(() => {});
+        await ticketChannel.send(`Ticket created for <@${interaction.user.id}> (code **${code}**), subject: ${subject}`).catch(() => {});
         return;
       }
 
@@ -4140,15 +4357,10 @@ if (cmd === 'createad') {
       .setPlaceholder('Select subject level category')
       .addOptions(levelOptions)
       .setRequired(true);
-    const openButton = new ButtonBuilder()
-      .setCustomId(`open_createad_modal|${interaction.user.id}|other`)
-      .setLabel('Open Create Ad Modal')
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(true);
 
     await interaction.followUp({
-      content: 'Ready — select the subject level category, then open the ad modal.',
-      components: [new ActionRowBuilder().addComponents(levelSelect), new ActionRowBuilder().addComponents(openButton)],
+      content: 'Ready — select the subject level category, then choose a subject to open the ad modal.',
+      components: [new ActionRowBuilder().addComponents(levelSelect)],
       ephemeral: true
     }).catch(() => {});
     return;
@@ -4394,7 +4606,7 @@ if (cmd === 'createad') {
 
       if (cmd === 'staffhelp') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can access this.', ephemeral: true }).catch(() => {});
-        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list [level] [tutor-assigned:yes/no/all]\n/tutor add/remove/list/info [user:@mention]\n/createad\n/editad\n/deletead\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove\n/reviewreminder\n/migrateads [force:true]`, ephemeral: true }).catch(() => {});
+        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list [level] [tutor-assigned:yes/no/all]\n/tutor add/remove/list/info [user:@mention]\n/createad\n/editad\n/deletead\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove [student:tutor user pickers]\n/modmailmap [purpose/category]\n/reviewreminder\n/migrateads [force:true]`, ephemeral: true }).catch(() => {});
       }
 
       // bumpleaderboard command
@@ -4442,24 +4654,32 @@ if (cmd === 'createad') {
       if (cmd === 'student') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can manage students.', ephemeral: true }).catch(() => {});
         const action = interaction.options.getString('action', true);
-        const studentId = interaction.options.getString('studentid', true);
-        const tutorId = interaction.options.getString('tutorid', true);
+        const studentUser = interaction.options.getUser('student', false);
+        const tutorUser = interaction.options.getUser('tutor', false);
+        const studentId = studentUser?.id || resolveDiscordUserInput(interaction.options.getString('studentid', false)).userId;
+        const tutorId = tutorUser?.id || resolveDiscordUserInput(interaction.options.getString('tutorid', false)).userId;
         const subject = interaction.options.getString('subject', false) || '(unspecified)';
 
+        if (!studentId || !tutorId) {
+          return interaction.reply({ content: 'Please choose both a student and a tutor from the Discord pickers.', ephemeral: true }).catch(() => {});
+        }
+
         if (!db.tutorProfiles[tutorId]) db.tutorProfiles[tutorId] = { addedAt: Date.now(), students: [], reviews: [], rating: { count:0, avg:0 }, notes: '' };
+        const studentLabel = studentUser ? `${studentUser.username} (<@${studentId}>)` : `<@${studentId}>`;
+        const tutorLabel = tutorUser ? `${tutorUser.username} (<@${tutorId}>)` : `<@${tutorId}>`;
 
         if (action === 'add') {
           if (!db.tutorProfiles[tutorId].students) db.tutorProfiles[tutorId].students = [];
           if (!db.tutorProfiles[tutorId].students.includes(studentId)) db.tutorProfiles[tutorId].students.push(studentId);
           db.studentAssignments[studentId] = { tutorId, subject, assignedAt: Date.now(), reviewScheduledAt: Date.now() + (db.reviewConfig.delaySeconds || 1296000)*1000 };
           saveDB();
-          return interaction.reply({ content: `Student ${studentId} assigned to tutor ${tutorId} for ${subject}`, ephemeral: true }).catch(() => {});
+          return interaction.reply({ content: `Student ${studentLabel} assigned to tutor ${tutorLabel} for ${subject}`, ephemeral: true }).catch(() => {});
         } else {
           // remove
           if (db.tutorProfiles[tutorId] && db.tutorProfiles[tutorId].students) db.tutorProfiles[tutorId].students = db.tutorProfiles[tutorId].students.filter(s => s !== studentId);
           if (db.studentAssignments[studentId] && db.studentAssignments[studentId].tutorId === tutorId) delete db.studentAssignments[studentId];
           saveDB();
-          return interaction.reply({ content: `Student ${studentId} removed from tutor ${tutorId}`, ephemeral: true }).catch(() => {});
+          return interaction.reply({ content: `Student ${studentLabel} removed from tutor ${tutorLabel}`, ephemeral: true }).catch(() => {});
         }
       }
 
@@ -4695,6 +4915,28 @@ if (cmd === 'createad') {
         const summary = [`Migration complete!`, `✅ Migrated: ${migrated}`, `⏭️ Skipped: ${skipped}`];
         if (errors.length > 0) summary.push(`❌ Errors: ${errors.length} (check logs)`);
         return interaction.editReply({ content: summary.join('\n') }).catch(() => {});
+      }
+
+      if (cmd === 'modmailmap') {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can configure modmail mappings.', ephemeral: true }).catch(() => {});
+        const purpose = interaction.options.getString('purpose', true);
+        const category = interaction.options.getChannel('category', true);
+        if (!category || category.type !== ChannelType.GuildCategory) {
+          return interaction.reply({ content: 'Please choose a Discord category channel.', ephemeral: true }).catch(() => {});
+        }
+
+        db.modmail = db.modmail || {};
+        db.modmail.config = db.modmail.config || {};
+        if (purpose === 'default') {
+          db.modmail.config.defaultCategoryId = category.id;
+        } else {
+          db.modmail.config.purposeCategories = db.modmail.config.purposeCategories || {};
+          db.modmail.config.purposeCategories[purpose] = category.id;
+        }
+        saveDB();
+
+        const purposeLabel = purpose === 'default' ? 'default modmail category' : `purpose ${purpose.replace(/_/g, ' ')}`;
+        return interaction.reply({ content: `Mapped ${purposeLabel} to **${category.name}**.`, ephemeral: true }).catch(() => {});
       }
 
       if (cmd === 'exportchannels') {

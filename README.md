@@ -21,6 +21,7 @@ Isofusie is a feature-rich Discord bot built for managing a tutoring community s
   - **C** — Complaints & Suggestions
   - **S** — Customer Service
   - **P** — Payment
+- Staff can remap those categories with `/modmailmap` using a Discord category picker instead of editing IDs
 - Each category maintains its own independent ticket counter
 - 120-second per-user cooldown per category prevents spam
 - Staff messages are forwarded into the ticket channel; student messages are forwarded back to the user's DM
@@ -58,8 +59,8 @@ Isofusie is a feature-rich Discord bot built for managing a tutoring community s
 - Seed a standard set of IGCSE / AS / A Level subjects with `/seedsubjects`
 
 ### 🧑‍🎓 Student Assignment
-- Assign students to a tutor for a specific subject with `/student add`
-- Remove student assignments with `/student remove`
+- Assign students to a tutor with `/student add` using Discord user pickers for both the student and tutor
+- Remove student assignments with `/student remove` using the same picker-based flow
 - Student assignment data is stored per tutor and visible in their profile
 
 ### 🎙️ Voice Recording (Demo Sessions)
@@ -131,13 +132,13 @@ node index.js
 
 ## Configuration
 
-Create a `.env` file in the project root. Required variables are marked with ✱.
+Copy [`.env.example`](.env.example) to `.env` and fill in the values for your server. Required variables are marked with ✱.
 
 | Variable | Required | Description |
 |---|---|---|
 | `BOT_TOKEN` | ✱ | Discord bot token |
 | `GUILD_ID` | ✱ | Discord server (guild) ID |
-| `STAFF_ROLE_ID` | ✱ | Staff role ID(s); comma-separated for multiple roles |
+| `STAFF_ROLE_ID` | ✱ | Staff role ID(s); set this to Manager and Isofusie only |
 | `FIND_A_TUTOR_CHANNEL_ID` | ✱ | Channel where tutor ads are posted |
 | `TUTORS_FEED_CHANNEL_ID` | ✱ | Channel for tutor feed announcements |
 | `STAFF_CHAT_ID` | | Channel for staff notifications and bot error reports |
@@ -145,8 +146,8 @@ Create a `.env` file in the project root. Required variables are marked with ✱
 | `TRANSCRIPTS_CHANNEL_ID` | | Channel where ticket transcripts are posted |
 | `TUTOR_CHAT_CHANNEL_ID` | | Channel for internal tutor discussions |
 | `TUTOR_POLICIES_CHANNEL_ID` | | Channel for tutor policy documents |
-| `MODMAIL_CATEGORY_ID` | | Category for modmail channels |
-| `MODMAIL_TRANSCRIPTS_CHANNEL_ID` | | Channel for modmail transcripts |
+| `MODMAIL_CATEGORY_ID` | | Default category for modmail channels |
+| `MODMAIL_TRANSCRIPTS_CHANNEL_ID` | ✱ | Channel for modmail transcripts |
 | `BUMP_CHANNEL_ID` | | Channel to restrict bump tracking (all channels if omitted) |
 | `ADS_CHANNEL_ID` | | Channel for ad archive posts |
 | `ARCHIVED_ADS_CHANNEL_ID` | | Channel for archived/deleted ads |
