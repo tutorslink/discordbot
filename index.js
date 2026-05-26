@@ -172,7 +172,6 @@ let db = {
 let _appwriteSyncTimer = null;
 
 function scheduleAppwriteSync() {
-  console.log('[DEBUG] isConfigured:', appwriteClient.isConfigured());
   if (!appwriteClient.isConfigured()) return;
   if (_appwriteSyncTimer) clearTimeout(_appwriteSyncTimer);
   _appwriteSyncTimer = setTimeout(() => {
@@ -182,7 +181,10 @@ function scheduleAppwriteSync() {
 }
 
 function saveDB() {
-  try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch (e) { console.warn('Failed to save DB', e); }
+  if (!appwriteClient.isConfigured()) {
+    try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch (e) { console.warn('Failed to save DB', e); }
+    return;
+  }
   scheduleAppwriteSync();
 }
 
@@ -816,34 +818,40 @@ if (db.reviewConfig && db.reviewConfig.delayDays && !db.reviewConfig.delaySecond
     } catch (e) {
       console.error('Failed to load DB', e);
     }
-  } else {
+  } else if (!appwriteClient.isConfigured()) {
     try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch (e) { console.warn('cannot write DB', e); }
   }
 }
 
-loadDB();
-
-async function runInitialAppwriteLoad() {
-  if (!appwriteClient.isConfigured()) {
+async function initializeDB() {
+  let shouldSeedAppwrite = false;
+  if (appwriteClient.isConfigured()) {
+    console.log('[Appwrite] Configured; starting initial load.');
+    try {
+      const appwriteData = await appwriteClient.loadDB();
+      if (appwriteData && Object.keys(appwriteData).length > 0) {
+        Object.assign(db, appwriteData);
+        console.log('[Appwrite] Initial load completed.');
+        return;
+      }
+      console.log('[Appwrite] Initial load returned no records; checking local bootstrap data.');
+      shouldSeedAppwrite = true;
+    } catch (e) {
+      console.warn('[Appwrite] Initial load failed, falling back to local data.json:', e.message);
+      shouldSeedAppwrite = true;
+    }
+  } else {
     console.log('[Appwrite] Not configured; running in local JSON mode.');
-    return;
   }
 
-  console.log('[Appwrite] Configured; starting initial background load.');
-  try {
-    const appwriteData = await appwriteClient.loadDB();
-    if (appwriteData && Object.keys(appwriteData).length > 0) {
-      Object.assign(db, appwriteData);
-      // Persist Appwrite data to JSON (backup) without re-triggering a sync.
-      try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch (e) { /* non-fatal */ }
-      console.log('[Appwrite] Initial background load completed.');
-      return;
-    }
-    console.log('[Appwrite] Initial background load returned no records; using local JSON state.');
-  } catch (e) {
-    console.warn('[Appwrite] Initial load failed, using data.json:', e.message);
+  loadDB();
+
+  if (shouldSeedAppwrite && appwriteClient.isConfigured()) {
+    scheduleAppwriteSync();
   }
 }
+
+await initializeDB();
 
 // Helper: build a standardized archive embed for an ad entry
 function buildArchiveEmbed(adData, msgId, reason, archivedBy) {
@@ -1544,11 +1552,6 @@ client.once('ready', async () => {
 
   await registerCommands();
   try { client.user.setActivity('DM for ModMail', { type: 3 }); } catch (e) {}
-
-  // Delay the first Appwrite pull until after the Discord session is fully ready.
-  setTimeout(() => {
-    runInitialAppwriteLoad().catch(e => console.warn('[Appwrite] Delayed initial load failed:', e.message));
-  }, 5000);
 });
 
 // process handlers

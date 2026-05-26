@@ -255,6 +255,14 @@ async function main() {
 
   await migrateSingleDoc('nextAdCodes', COLLECTION_IDS.nextAdCodes, 'all', db.nextAdCodes);
 
+  await migrateMap('createAds', COLLECTION_IDS.createAds, db.createAds);
+
+  await migrateSingleDoc('nextTicketId', COLLECTION_IDS.nextTicketId, 'counter', db.nextTicketId);
+
+  await migrateMap('archivedAds', COLLECTION_IDS.archivedAds, db.archivedAds);
+
+  await migrateSingleDoc('defaultEmbedColor', COLLECTION_IDS.defaultEmbedColor, 'config', db.defaultEmbedColor);
+
   // ── Discord-Only ─────────────────────────────────────────────────────────
 
   await migrateMap('cooldowns', COLLECTION_IDS.cooldowns, db.cooldowns);

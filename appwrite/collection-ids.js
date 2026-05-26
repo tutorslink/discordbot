@@ -6,14 +6,16 @@
  * Synced with Website:
  *   discordSubjects, discordSubjectLevels, discordSubjectTutors,
  *   discordTutorProfiles, discordStudentAssignments, discordPendingReviews,
- *   discordReviewConfig, discordModmail, discordInitMessage, discordAdCodes
+ *   discordReviewConfig, discordModmail, discordInitMessage, discordAdCodes,
+ *   discordCreateAds, discordNextTicketId, discordArchivedAds, discordDefaultEmbedColor
+ *   discordNextTicketId, discordArchivedAds, discordDefaultEmbedColor
  *
  * Discord-Only (not synced):
  *   discordCooldowns, discordBumpLeaderboard, discordSticky, discordTickets,
  *   discordTempCreateAd, discordTempTutorAdd, discordTempTutorRemove
  */
 
-export const DB_ID = process.env.APPWRITE_DB_ID || 'tutorslink';
+export const DB_ID = process.env.APPWRITE_DB_ID || 'discordbot';
 
 export const COLLECTION_IDS = {
   // Ads (shared with website)
@@ -31,6 +33,10 @@ export const COLLECTION_IDS = {
   modmail:             'discordModmail',
   initMessage:         'discordInitMessage',
   nextAdCodes:         'discordAdCodes',
+  createAds:           'discordCreateAds',
+  nextTicketId:        'discordNextTicketId',
+  archivedAds:         'discordArchivedAds',
+  defaultEmbedColor:   'discordDefaultEmbedColor',
 
   // Discord-Only (not synced with website)
   cooldowns:           'discordCooldowns',

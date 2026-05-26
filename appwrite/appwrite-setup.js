@@ -264,6 +264,50 @@ const COLLECTIONS = [
     },
   },
 
+  {
+    id: COLLECTION_IDS.createAds,
+    name: 'Discord Create Ads',
+    permissions: SERVER_ONLY_PERMS,
+    // One document per active ad; documentId = Discord messageId.
+    // data: JSON.stringify({ channelId, embed, adCode, tutorId, level, ... })
+    attrs: async (cid) => {
+      await createStringAttr(cid, 'entityId', 64, true);
+      await createLongtextAttr(cid, 'data', true);
+    },
+  },
+
+  {
+    id: COLLECTION_IDS.nextTicketId,
+    name: 'Discord Next Ticket Id',
+    permissions: SERVER_ONLY_PERMS,
+    // Single document (id="counter"): 123
+    attrs: async (cid) => {
+      await createLongtextAttr(cid, 'data', true);
+    },
+  },
+
+  {
+    id: COLLECTION_IDS.archivedAds,
+    name: 'Discord Archived Ads',
+    permissions: SERVER_ONLY_PERMS,
+    // One document per archived ad; documentId = original Discord messageId.
+    // data: JSON.stringify({ embed, tutorId, level, adCode, archivedAt, ... })
+    attrs: async (cid) => {
+      await createStringAttr(cid, 'entityId', 64, true);
+      await createLongtextAttr(cid, 'data', true);
+    },
+  },
+
+  {
+    id: COLLECTION_IDS.defaultEmbedColor,
+    name: 'Discord Default Embed Color',
+    permissions: SERVER_ONLY_PERMS,
+    // Single document (id="config"): "#5865F2" | null
+    attrs: async (cid) => {
+      await createLongtextAttr(cid, 'data', true);
+    },
+  },
+
   // ── Discord-Only ─────────────────────────────────────────────────────────
 
   {

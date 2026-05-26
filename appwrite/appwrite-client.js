@@ -276,6 +276,9 @@ export async function syncDB(db) {
   if (!getDB()) return; // not configured
   try {
     await Promise.all([
+      // Active ads state (full payload for bot restarts)
+      syncMapCollection(COLLECTION_IDS.createAds, db.createAds),
+
       // Ads (public website-facing collection)
       syncAdsCollection(db.createAds),
 
@@ -287,6 +290,9 @@ export async function syncDB(db) {
       syncSingleDoc(COLLECTION_IDS.modmail,       'all',    db.modmail),
       syncSingleDoc(COLLECTION_IDS.initMessage,   'config', { message: db.initMessage }),
       syncSingleDoc(COLLECTION_IDS.nextAdCodes,   'all',    db.nextAdCodes),
+      syncSingleDoc(COLLECTION_IDS.nextTicketId,  'counter', db.nextTicketId),
+      syncMapCollection(COLLECTION_IDS.archivedAds, db.archivedAds),
+      syncSingleDoc(COLLECTION_IDS.defaultEmbedColor, 'config', db.defaultEmbedColor),
       syncSingleDoc(COLLECTION_IDS.sticky,        'config', db.sticky),
 
       // Map / per-entity collections
@@ -325,6 +331,10 @@ export async function loadDB() {
       modmailRaw,
       initMessageRaw,
       nextAdCodes,
+      createAds,
+      nextTicketId,
+      archivedAds,
+      defaultEmbedColor,
       sticky,
       tutorProfiles,
       studentAssignments,
@@ -343,6 +353,10 @@ export async function loadDB() {
       loadSingleDoc(COLLECTION_IDS.modmail,       'all'),
       loadSingleDoc(COLLECTION_IDS.initMessage,   'config'),
       loadSingleDoc(COLLECTION_IDS.nextAdCodes,   'all'),
+      loadMapCollection(COLLECTION_IDS.createAds),
+      loadSingleDoc(COLLECTION_IDS.nextTicketId,  'counter'),
+      loadMapCollection(COLLECTION_IDS.archivedAds),
+      loadSingleDoc(COLLECTION_IDS.defaultEmbedColor, 'config'),
       loadSingleDoc(COLLECTION_IDS.sticky,        'config'),
       loadMapCollection(COLLECTION_IDS.tutorProfiles),
       loadMapCollection(COLLECTION_IDS.studentAssignments),
@@ -365,6 +379,10 @@ export async function loadDB() {
     if (initMessageRaw!== null && initMessageRaw.message !== undefined)
       result.initMessage = initMessageRaw.message;
     if (nextAdCodes   !== null) result.nextAdCodes   = nextAdCodes;
+    if (createAds     && Object.keys(createAds).length) result.createAds = createAds;
+    if (nextTicketId  !== null) result.nextTicketId  = nextTicketId;
+    if (archivedAds   && Object.keys(archivedAds).length) result.archivedAds = archivedAds;
+    if (defaultEmbedColor !== null) result.defaultEmbedColor = defaultEmbedColor;
     if (sticky        !== null) result.sticky        = sticky;
 
     if (tutorProfiles      && Object.keys(tutorProfiles).length)      result.tutorProfiles      = tutorProfiles;
