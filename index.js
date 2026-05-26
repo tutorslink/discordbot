@@ -56,7 +56,7 @@ import { setupWebServer } from "./webserver.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 9904;
+const PORT = process.env.PORT || 9904;
 const app = express();
 
 // Setup web server routes (authentication, API, etc.)
