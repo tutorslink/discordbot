@@ -27,13 +27,6 @@ import {
   StringSelectMenuOptionBuilder
 } from 'discord.js';
 
-const {
-  GUILD_ID,
-  STAFF_ROLE_ID,
-  MODMAIL_TRANSCRIPTS_CHANNEL_ID: ENV_MODMAIL_TRANSCRIPTS_CHANNEL_ID,
-  STAFF_CHAT_ID
-} = process.env;
-
 // Default modmail purpose categories - used unless staff overrides them in saved config
 const DEFAULT_MODMAIL_PURPOSE_CATEGORIES = {
   tutor_application:      '1460567488634032200', // Tutor Applications
@@ -59,6 +52,13 @@ const MODMAIL_PURPOSE_OPTIONS = [
 
 export default function initModmail({ client, db, saveDB, config = {}, notifyError = null }) {
   if (!client || !db || !saveDB) throw new Error('initModmail missing args');
+
+  const {
+    GUILD_ID,
+    STAFF_ROLE_ID,
+    MODMAIL_TRANSCRIPTS_CHANNEL_ID: ENV_MODMAIL_TRANSCRIPTS_CHANNEL_ID,
+    STAFF_CHAT_ID
+  } = process.env;
 
   db.modmail = db.modmail || {};
   db.modmail.config = db.modmail.config || {};

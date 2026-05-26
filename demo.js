@@ -35,13 +35,6 @@ import { spawn } from 'child_process';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const {
-  GUILD_ID,
-  STAFF_ROLE_ID,
-  STAFF_CHAT_ID,
-  SERVER_HOST
-} = process.env;
-
 // Cross-platform ffprobe command
 const ffprobeCmd = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
 
@@ -1322,6 +1315,13 @@ async function cleanupOldRecordings(client) {
 // Main initialization function
 export default function initDemo(client) {
   if (!client) throw new Error('initDemo missing client');
+
+  const {
+    GUILD_ID,
+    STAFF_ROLE_ID,
+    STAFF_CHAT_ID,
+    SERVER_HOST
+  } = process.env;
 
   if (!GUILD_ID || !STAFF_ROLE_ID) {
     throw new Error('demo config missing required env IDs: GUILD_ID, STAFF_ROLE_ID');

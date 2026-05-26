@@ -2094,7 +2094,9 @@ client.on('interactionCreate', async (interaction) => {
         } catch (err) {
           console.error('[OPEN CLOSE MODAL] showModal failed', err);
           try { notifyStaffError(err, 'open_close_modal showModal', interaction); } catch (e) {}
-          await interaction.reply({ content: 'Could not open modal, try again.', ephemeral: true });
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: 'Could not open modal, try again.', ephemeral: true }).catch(() => {});
+          }
         }
         return;
       }
