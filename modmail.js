@@ -12,7 +12,7 @@
  * - Exposes notifyError callback or uses STAFF_CHAT_ID fallback
  * - Close flow: when staff clicks "End chat" we open a modal to collect reason (handled by index.js or here based on approach)
  */
-
+require('newrelic');
 import {
   ChannelType,
   ActionRowBuilder,
