@@ -543,7 +543,7 @@
     "title": "Looking for *your* subject tutor in *this* crowd?",
     "body": "Try smashing that search icon, and type *only* your subject name.\nAnd you're gonna get all the available tutors for that subject. For all levels.",
     "color": "#fffff",
-    "messageId": "1486428494320636078"
+    "messageId": "1508625942992654336"
   },
   "createAds": {
     "1445552859272839381": {
@@ -587,16 +587,6 @@
       "categoryChannelId": "1432699036435222578",
       "categoryMessageId": "1483929935952220262"
     },
-    "1452670862527434786": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "University Chemistry",
-        "description": "Subject level : University\nSubject code(s): NA\n\n# 👨‍🏫 Tutor Details & Pricing\nLanguages: English, Kannada & Hindi\nClass Type: Both, One-on-one & Group classes\nClass duration: 1 hour 30 minutes\nMonthly Schedule: 2 Classes per week, 8 classes/ month\nPrice per Class: 6$\nTime zone: GMT+5:30\n\nWant to talk to the available tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\n\nI am \"currently studying in Manipal university. I can offer top quality education and in simplified way\"\n\n```Student Testimonials:```\n\n```💳 Payment Terms:```\n\n\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow <#1437161364568277013> throughout the entire process.\n\nOnce you're ready to pay, DM <@1442933613728497746>  and you will be guided to the next steps.\nYou can also DM <@1442933613728497746> for any problems or suggestions",
-        "color": "#fffff"
-      },
-      "categoryChannelId": "1429425557648707614",
-      "categoryMessageId": "1483929944563253349"
-    },
     "1452739168487739576": {
       "channelId": "1429776595668697191",
       "embed": {
@@ -636,16 +626,6 @@
       },
       "categoryChannelId": "1432699000808669246",
       "categoryMessageId": "1483929992508477712"
-    },
-    "1461498004266815599": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "AS/AL Physics",
-        "description": "Subject Level: AS/A Levels\nSubject codes: 9702\n\n#  👨‍🏫 Tutor Details & Pricing\n\n\nLanguages: English & Urdu\nClass Type: Both, One-on-one & Group Classes\nClass Duration: 1 Hour\nMonthly Schedule: 4 classes/week = 16 classes/month\nPrice per Class (USD) for Group classes: $8\nPrice per Class (USD) for one-on-one classes: $15\nTime zone: GMT5+\n\nWant to talk to the available tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\nI am a university student with an excellent O & A Level academic record, with an A* in igcse Physics and an A* in A Level Mathematics and strong results in Computer Science and Physics. With 3 years of tutoring experience, I focus on clear concept-building, exam strategies, and personalized support to help students achieve top grades.\n\n```Student Testimonials:```\n\n\n\n```💳 Payment Terms:  ```\n\n100% upfront before classes begin\nYou'll be connected with the tutor once the initial payment is confirmed.\n\n\nMake sure you follow <#1437161364568277013> throughout the entire process.\nOnce you're ready to pay, DM <@1442933613728497746> and you will be guided to the next steps.\nYou can also DM <@1442933613728497746> for any problems or suggestions",
-        "color": "#fffff"
-      },
-      "categoryChannelId": "1432699036435222578",
-      "categoryMessageId": "1483930000594964613"
     },
     "1463133395231182850": {
       "channelId": "1429776595668697191",
@@ -1143,33 +1123,6 @@
         "paymentTerms": "100% upfront before classes begin"
       }
     },
-    "1489910319085129759": {
-      "channelId": "1429776595668697191",
-      "embed": {
-        "title": "IGCSE/GCSE Accounting",
-        "description": "**Price (Group):** $cheap\n**Price (1-on-1):** $cheaper\n**Timezone:** black\n**Languages:** english banana\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
-        "color": "#fffff"
-      },
-      "tutorId": null,
-      "level": "igcse",
-      "adCode": "IG-15",
-      "categoryChannelId": "1485379727962279986",
-      "categoryMessageId": "1489910323531218997",
-      "fullDetails": {
-        "subjectLevel": "igcse",
-        "subjectCodes": "test ad",
-        "languages": "english banana",
-        "classType": "free",
-        "classDuration": "long",
-        "monthlySchedule": "alot classes/week = alot alot classes/month",
-        "price": "cheap",
-        "price1on1": "cheaper",
-        "timezone": "black",
-        "tutorMessage": "",
-        "testimonials": "test ad gone wild",
-        "paymentTerms": "100% upfront before classes begin"
-      }
-    },
     "1508238445791809566": {
       "channelId": "1429776595668697191",
       "embed": {
@@ -1196,14 +1149,42 @@
         "testimonials": "",
         "paymentTerms": "100% upfront before classes begin"
       }
+    },
+    "1508618412689985596": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Physics",
+        "description": "**Price (1-on-1):** $6\n**Timezone:** GMT3+\n**Languages:** English, Arabic, Urdu/Hindi\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "708964764516352030",
+      "level": "igcse",
+      "adCode": "IG-15",
+      "categoryChannelId": "1429425579547037891",
+      "categoryMessageId": "1508618418096439366",
+      "fullDetails": {
+        "subjectLevel": "IGCSE/O-Level",
+        "subjectCodes": "0625 and equivalents",
+        "languages": "English, Arabic, Urdu/Hindi",
+        "classType": "One-on-one",
+        "classDuration": "1 Hour",
+        "monthlySchedule": "3 classes/week = 12 classes/month",
+        "price": "",
+        "price1on1": "6",
+        "timezone": "GMT3+",
+        "tutorMessage": "I'm an A Level",
+        "testimonials": "\"tried over 5 different tutors and he was the only one who taught me what i actually needed to know with a great explanation. 5/5\"",
+        "paymentTerms": "100% upfront before classes begin"
+      }
     }
   },
   "nextAdCodes": {
-    "igcse": 14,
+    "igcse": 15,
     "other": 2,
     "university": 7,
     "language": 4,
-    "a_level": 2
+    "a_level": 2,
+    "below_igcse": 1
   },
   "archivedAds": {
     "1481846123139432449": {
@@ -1859,6 +1840,92 @@
       "archivedAt": 1774462916887,
       "archivedBy": "873095080938975232",
       "reason": "Ad removed by staff."
+    },
+    "1489910319085129759": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "IGCSE/GCSE Accounting",
+        "description": "**Price (Group):** $cheap\n**Price (1-on-1):** $cheaper\n**Timezone:** black\n**Languages:** english banana\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": null,
+      "level": "igcse",
+      "adCode": "IG-15",
+      "categoryChannelId": "1485379727962279986",
+      "categoryMessageId": "1489910323531218997",
+      "fullDetails": {
+        "subjectLevel": "igcse",
+        "subjectCodes": "test ad",
+        "languages": "english banana",
+        "classType": "free",
+        "classDuration": "long",
+        "monthlySchedule": "alot classes/week = alot alot classes/month",
+        "price": "cheap",
+        "price1on1": "cheaper",
+        "timezone": "black",
+        "tutorMessage": "",
+        "testimonials": "test ad gone wild",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1779754273295,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1461498004266815599": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "AS/AL Physics",
+        "description": "Subject Level: AS/A Levels\nSubject codes: 9702\n\n#  👨‍🏫 Tutor Details & Pricing\n\n\nLanguages: English & Urdu\nClass Type: Both, One-on-one & Group Classes\nClass Duration: 1 Hour\nMonthly Schedule: 4 classes/week = 16 classes/month\nPrice per Class (USD) for Group classes: $8\nPrice per Class (USD) for one-on-one classes: $15\nTime zone: GMT5+\n\nWant to talk to the available tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\nI am a university student with an excellent O & A Level academic record, with an A* in igcse Physics and an A* in A Level Mathematics and strong results in Computer Science and Physics. With 3 years of tutoring experience, I focus on clear concept-building, exam strategies, and personalized support to help students achieve top grades.\n\n```Student Testimonials:```\n\n\n\n```💳 Payment Terms:  ```\n\n100% upfront before classes begin\nYou'll be connected with the tutor once the initial payment is confirmed.\n\n\nMake sure you follow <#1437161364568277013> throughout the entire process.\nOnce you're ready to pay, DM <@1442933613728497746> and you will be guided to the next steps.\nYou can also DM <@1442933613728497746> for any problems or suggestions",
+        "color": "#fffff"
+      },
+      "categoryChannelId": "1432699036435222578",
+      "categoryMessageId": "1483930000594964613",
+      "archivedAt": 1779754357230,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1452670862527434786": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "University Chemistry",
+        "description": "Subject level : University\nSubject code(s): NA\n\n# 👨‍🏫 Tutor Details & Pricing\nLanguages: English, Kannada & Hindi\nClass Type: Both, One-on-one & Group classes\nClass duration: 1 hour 30 minutes\nMonthly Schedule: 2 Classes per week, 8 classes/ month\nPrice per Class: 6$\nTime zone: GMT+5:30\n\nWant to talk to the available tutors for this subject?\nPress the \"Talk to tutors!\" button attached to this message and watch the magic happen!\n\n```Message from tutor:```\n\nI am \"currently studying in Manipal university. I can offer top quality education and in simplified way\"\n\n```Student Testimonials:```\n\n```💳 Payment Terms:```\n\n\n100% upfront before classes begin\nYou’ll be connected with the tutor once the initial payment is confirmed.\n\nMake sure you follow <#1437161364568277013> throughout the entire process.\n\nOnce you're ready to pay, DM <@1442933613728497746>  and you will be guided to the next steps.\nYou can also DM <@1442933613728497746> for any problems or suggestions",
+        "color": "#fffff"
+      },
+      "categoryChannelId": "1429425557648707614",
+      "categoryMessageId": "1483929944563253349",
+      "archivedAt": 1779754376780,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
+    },
+    "1508625930099232888": {
+      "channelId": "1429776595668697191",
+      "embed": {
+        "title": "Middle School Maths",
+        "description": "**Price (Group):** $1.5\n**Price (1-on-1):** $3\n**Timezone:** GMT3+\n**Languages:** English, Urdu/Hindi\n\nClick \"View Full Details\" below for more information, or \"Talk to Tutors!\" to start a conversation.",
+        "color": "#fffff"
+      },
+      "tutorId": "1375163157244280902",
+      "level": "below_igcse",
+      "adCode": "Bel-1",
+      "categoryChannelId": "1508625934243332246",
+      "categoryMessageId": "1508625938093576192",
+      "fullDetails": {
+        "subjectLevel": "Middle School",
+        "subjectCodes": "NA",
+        "languages": "English, Urdu/Hindi",
+        "classType": "Both, One-on-one & Group classes",
+        "classDuration": "1 Hour",
+        "monthlySchedule": "2 classes/week = 8 classes/month",
+        "price": "1.5",
+        "price1on1": "3",
+        "timezone": "GMT3+",
+        "tutorMessage": "-#9th Grade",
+        "testimonials": "",
+        "paymentTerms": "100% upfront before classes begin"
+      },
+      "archivedAt": 1779754897155,
+      "archivedBy": "873095080938975232",
+      "reason": "Ad removed by staff."
     }
   },
   "defaultEmbedColor": "#fffff",
@@ -1870,7 +1937,9 @@
         "1295782123944280088"
       ],
       "username": "m3nny",
-      "tag": "m3nny"
+      "tag": "m3nny",
+      "phoneNumber": "+20 12 720 721 09",
+      "dob": ""
     },
     "708964764516352030": {
       "addedAt": 1765226061635,
@@ -1879,7 +1948,9 @@
         "904642352658935820"
       ],
       "username": "monke3984",
-      "tag": "monke3984"
+      "tag": "monke3984",
+      "phoneNumber": "0594076219",
+      "dob": ""
     },
     "1375163157244280902": {
       "addedAt": 1765749849358,
@@ -1951,7 +2022,9 @@
       },
       "notes": "",
       "username": "s1keena",
-      "tag": "s1keena"
+      "tag": "s1keena",
+      "phoneNumber": "03355137378",
+      "dob": ""
     },
     "1097622577079398421": {
       "addedAt": 1768748262172,
@@ -2025,6 +2098,16 @@
       "notes": "",
       "username": "highonwater._.",
       "tag": "highonwater._."
+    },
+    "<@873095080938975232>": {
+      "addedAt": null,
+      "students": [],
+      "reviews": [],
+      "rating": {
+        "count": 0,
+        "avg": 0
+      },
+      "notes": ""
     }
   },
   "studentAssignments": {
@@ -2068,8 +2151,8 @@
       "lastBump": 1768549507251
     },
     "873095080938975232": {
-      "count": 302,
-      "lastBump": 1775243225156
+      "count": 303,
+      "lastBump": 1779754393960
     },
     "1306942453479374889": {
       "count": 27,
@@ -2911,7 +2994,8 @@
     "nextId_C": 3,
     "nextId_S": 5,
     "nextId_P": 2,
-    "_helpers": {}
+    "_helpers": {},
+    "config": {}
   },
   "_tempCreateAd": {
     "1448007595871830127": {

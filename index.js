@@ -1088,7 +1088,9 @@ function generateTicketNumber() {
 }
 
 function getStaffRoleIds() {
-  return (STAFF_ROLE_ID || '').split(',').map(s => s.trim()).filter(Boolean);
+  const base = (STAFF_ROLE_ID || '').split(',').map(s => s.trim()).filter(Boolean);
+  const extras = [process.env.MANAGER_ROLE_ID, process.env.ISOFUSIE_ROLE_ID].filter(Boolean).map(s => String(s).trim());
+  return Array.from(new Set([...base, ...extras]));
 }
 
 function isStaff(member) {
@@ -1698,15 +1700,29 @@ client.on('interactionCreate', async (interaction) => {
         
         // Create button row with Talk to Tutors button for ephemeral message
         const detailsRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
+          new ButtonBuilder().setCustomId(`ad_enquire|${subject}|${adData.adCode || ''}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
         );
         
         return interaction.reply({ embeds: [detailsEmbed], components: [detailsRow], ephemeral: true }).catch(() => {});
       }
 
       if (custom.startsWith('ad_enquire|')) {
-        // unchanged
-        const subject = custom.split('|')[1];
+        // ad_enquire format: ad_enquire|<subject>|<optional adMessageId or adCode>
+        const parts = custom.split('|');
+        const subject = parts[1];
+        const identifier = parts[2] || null;
+        // Resolve selected tutor if the button referenced a specific ad
+        let selectedTutorId = null;
+        try {
+          if (identifier) {
+            // If identifier looks like a message id and we have a matching createAds entry
+            if (/^\d+$/.test(identifier) && db.createAds && db.createAds[identifier]) {
+              selectedTutorId = db.createAds[identifier].tutorId || null;
+            } else if (isAdCode(identifier)) {
+              selectedTutorId = resolveAdCodeToTutorId(identifier);
+            }
+          }
+        } catch (e) { console.warn('ad_enquire tutor resolution failed', e); }
         const user = interaction.user;
         const existing = findOpenTicketForUserSubject(user.id, subject);
         if (existing) {
@@ -1748,6 +1764,7 @@ client.on('interactionCreate', async (interaction) => {
           studentTag: user.tag,
           tutorMessageId: null,
           tutorThreadId: null,
+          selectedTutorId: selectedTutorId || null,
           subject,
           approved: false,
           awaitingApproval: false,
@@ -1928,15 +1945,39 @@ client.on('interactionCreate', async (interaction) => {
           }
 
           try {
-            await postToTutorsFeed(interaction.guild, code, ticket.subject, firstMessageText, ticket);
-            ticket.approved = true;
-            if (ticket.awaitingApproval) delete ticket.awaitingApproval;
-            saveDB();
-            try {
-              const tchan = await interaction.guild.channels.fetch(ticket.ticketChannelId).catch(() => null);
-              if (tchan) await tchan.send('Ticket approved by staff, tutors notified.').catch(() => {});
-            } catch (e) {}
-            await interaction.editReply({ content: `Ticket ${code} approved, tutors notified.` }).catch(() => {});
+            // If this ticket has a selectedTutorId then grant that tutor access instead
+            if (ticket.selectedTutorId) {
+              const tutorId = ticket.selectedTutorId;
+              try {
+                const tchan = await interaction.guild.channels.fetch(ticket.ticketChannelId).catch(() => null);
+                if (tchan) {
+                  await tchan.permissionOverwrites.edit(tutorId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
+                  // Notify tutor via DM (best-effort)
+                  try {
+                    const tutorUser = await client.users.fetch(tutorId).catch(() => null);
+                    if (tutorUser) {
+                      await tutorUser.send(`You were selected for ticket ${code} about ${ticket.subject}. Please join the channel <#${ticket.ticketChannelId}> to respond (ticket ${code}).`).catch(() => {});
+                    }
+                  } catch (e) {}
+                  await tchan.send('Ticket approved by staff, selected tutor notified.').catch(() => {});
+                }
+              } catch (e) { console.warn('failed to grant selected tutor access', e); }
+
+              ticket.approved = true;
+              if (ticket.awaitingApproval) delete ticket.awaitingApproval;
+              saveDB();
+              await interaction.editReply({ content: `Ticket ${code} approved, selected tutor notified.` }).catch(() => {});
+            } else {
+              await postToTutorsFeed(interaction.guild, code, ticket.subject, firstMessageText, ticket);
+              ticket.approved = true;
+              if (ticket.awaitingApproval) delete ticket.awaitingApproval;
+              saveDB();
+              try {
+                const tchan = await interaction.guild.channels.fetch(ticket.ticketChannelId).catch(() => null);
+                if (tchan) await tchan.send('Ticket approved by staff, tutors notified.').catch(() => {});
+              } catch (e) {}
+              await interaction.editReply({ content: `Ticket ${code} approved, tutors notified.` }).catch(() => {});
+            }
           } catch (e) {
             console.error('approve flow failed', e);
             try { await notifyStaffError(e, 'approve flow', interaction); } catch (err) {}
@@ -2488,8 +2529,8 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`view_full_details|${adCode}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
+              new ButtonBuilder().setCustomId(`view_full_details|${adCode}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
+              new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
             );
 
             const findCh = await interaction.guild.channels.fetch(FIND_A_TUTOR_CHANNEL_ID).catch(() => null);
@@ -2529,6 +2570,16 @@ client.on('interactionCreate', async (interaction) => {
                     fullDetails: fullDetailsMessage
                 };
                 saveDB();
+
+                // Update the enquiry button to include the message id so we can map back to this ad
+                try {
+                  const updatedRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`view_full_details|${adCode}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId(`ad_enquire|${subject}|${sent.id}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
+                  );
+                  await sent.edit({ components: [updatedRow] }).catch(() => {});
+                  if (categorySent) await categorySent.edit({ components: [updatedRow] }).catch(() => {});
+                } catch (e) { /* best-effort */ }
 
                 // Create review thread if a tutor was selected and has reviews
                 if (selectedTutorId) {
@@ -3792,7 +3843,8 @@ client.on('interactionCreate', async (interaction) => {
         if (!ticket) return interaction.reply({ content: `Ticket ${code} not found.`, ephemeral: true }).catch(() => {});
 
         const is_staff = isStaff(interaction.member);
-        const allowedTutorsArr = db.subjectTutors[ticket.subject] || [];
+        // If a tutor was specifically selected for this ticket, only allow that tutor to reply.
+        let allowedTutorsArr = ticket.selectedTutorId ? [ticket.selectedTutorId] : (db.subjectTutors[ticket.subject] || []);
         const allowedTutors = new Set(allowedTutorsArr.map(id => String(id)));
         const userIdStr = String(interaction.user.id);
         const isTutorId = allowedTutors.has(userIdStr);
@@ -5154,9 +5206,13 @@ client.on('messageCreate', async (message) => {
             try { notifyStaffError(e, 'messageCreate echo follow-up', message); } catch (err) {}
           }
         } else {
-          // approved flow forwards to tutors thread
+          // approved flow forwards to tutors thread (or directly visible to selected tutor)
           let forwarded = false;
-          if (ticket.tutorThreadId) {
+          if (ticket.selectedTutorId) {
+            // If a tutor was specifically selected, they will be given access to the ticket channel
+            // and no cross-thread forwarding is required — treat as forwarded for reaction purposes.
+            forwarded = true;
+          } else if (ticket.tutorThreadId) {
             try {
               const thread = await message.guild.channels.fetch(ticket.tutorThreadId).catch(() => null);
               if (thread && thread.isThread()) {
@@ -5173,9 +5229,23 @@ client.on('messageCreate', async (message) => {
           message.react(forwarded ? '✅' : '❌').catch(() => {});
         }
       } else {
-        // staff or other wrote in ticket
-        ticket.messages.push({ who: `Staff ${message.author.id}`, at: Date.now(), text: message.content || '', attachments });
-        saveDB();
+        // tutor, staff, or other wrote in ticket
+        const authorId = String(message.author.id);
+        // If this author is the selected tutor (and not staff), record as a tutor message
+        if (ticket.selectedTutorId && authorId === String(ticket.selectedTutorId) && !isStaff(message.member)) {
+          ticket.tutorMap = ticket.tutorMap || {};
+          ticket.tutorCount = ticket.tutorCount || 0;
+          if (!ticket.tutorMap[authorId]) {
+            ticket.tutorCount += 1;
+            ticket.tutorMap[authorId] = ticket.tutorCount;
+          }
+          const tutorLabel = `Tutor ${ticket.tutorMap[authorId]}`;
+          ticket.messages.push({ who: tutorLabel, tutorId: authorId, at: Date.now(), text: message.content || '', attachments });
+          saveDB();
+        } else {
+          ticket.messages.push({ who: `Staff ${message.author.id}`, at: Date.now(), text: message.content || '', attachments });
+          saveDB();
+        }
       }
       return;
     }
