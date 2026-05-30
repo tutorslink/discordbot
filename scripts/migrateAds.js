@@ -247,7 +247,7 @@ async function main() {
 
       const migrateRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`view_full_details|${adCode || subject}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
+        new ButtonBuilder().setCustomId(`ad_enquire|${subject}|${adCode || messageId}`).setLabel('Talk to Tutor').setStyle(ButtonStyle.Success)
       );
 
       // Do NOT ping tutors — tutor identities are kept secret
