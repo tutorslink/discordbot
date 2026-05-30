@@ -14,7 +14,7 @@
  * - Timestamps in transcripts use Discord timestamp format <t:SECONDS:f>
  * - /embedcolor updates sticky and createad embed colors, now affects sticky as before
  */
-
+import 'newrelic';
 import fs from 'fs';
 import { runStartupPreflight } from './startup-check.js';
 import dotenv from 'dotenv';
