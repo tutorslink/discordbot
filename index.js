@@ -496,6 +496,48 @@ function buildEditAdFullDetailsPrefill(adData) {
   };
 }
 
+function buildFullDetailsDescription(details, { includeFooter = false } = {}) {
+  const fullDetails = details || {};
+  let message = '';
+  message += `**Subject Level:** ${fullDetails.subjectLevel || 'N/A'}\n`;
+  message += `**Subject Codes:** ${fullDetails.subjectCodes || 'N/A'}\n\n`;
+
+  message += `**Languages:** ${fullDetails.languages || 'N/A'}\n`;
+  message += `**Class Type:** ${fullDetails.classType || 'N/A'}\n`;
+  message += `**Class Duration:** ${fullDetails.classDuration || 'N/A'}\n`;
+  message += `**Monthly Schedule:** ${fullDetails.monthlySchedule || 'N/A'}\n`;
+  if (fullDetails.price && fullDetails.price1on1) {
+    message += `**Price (Group):** $${fullDetails.price}\n`;
+    message += `**Price (1-on-1):** $${fullDetails.price1on1}\n`;
+  } else if (fullDetails.price) {
+    message += `**Price:** $${fullDetails.price}\n`;
+  } else if (fullDetails.price1on1) {
+    message += `**Price (1-on-1):** $${fullDetails.price1on1}\n`;
+  } else {
+    message += `**Price:** Contact for pricing\n`;
+  }
+  message += `**Timezone:** ${fullDetails.timezone || 'N/A'}\n\n`;
+
+  if (fullDetails.tutorMessage) {
+    message += `**Message from Tutor:**\n${fullDetails.tutorMessage}\n\n`;
+  }
+
+  if (fullDetails.testimonials) {
+    message += `**Student Testimonials:**\n${fullDetails.testimonials}\n\n`;
+  }
+
+  message += `**Payment Terms:** ${fullDetails.paymentTerms || '100% upfront before classes begin'}`;
+
+  if (includeFooter) {
+    const policiesChannelMention = TUTOR_POLICIES_CHANNEL_ID ? `<#${TUTOR_POLICIES_CHANNEL_ID}>` : '#tutors-link-policies';
+    message += `\n\nYou'll be connected with the tutor once the initial payment is confirmed.\n\n`;
+    message += `Make sure you follow ${policiesChannelMention} throughout the entire process.\n\n`;
+    message += `Once you're ready to pay, DM <@${client.user.id}> and you will be guided to the next steps.`;
+  }
+
+  return message;
+}
+
 function buildEditAdShortModal(messageId, source, { preTitle = '', preDesc = '', preColor = '', preRoleId = '' } = {}) {
   const modal = new ModalBuilder().setCustomId(`editad_modal|${messageId}|${source}`).setTitle(`Edit ad ${messageId}`);
   const subjectInput = new TextInputBuilder()
@@ -1041,9 +1083,18 @@ function buildArchiveEmbed(adData, msgId, reason, archivedBy) {
   const tutorValue = archivedBy === 'system'
     ? `<@${adData.tutorId}> (left server)`
     : (adData.tutorId ? `<@${adData.tutorId}>` : '(no tutor assigned)');
+  const archiveDescription = adData.fullDetails
+    ? buildFullDetailsDescription(adData.fullDetails)
+    : (adData.embed?.description || '(no description)');
+  const descriptionChunks = splitMessage(archiveDescription, 4000);
+  const embedDescription = descriptionChunks.shift() || '(no description)';
+  const overflowMessages = [];
+  for (const chunk of descriptionChunks) {
+    overflowMessages.push(...splitMessage(chunk, 2000));
+  }
   const embed = new EmbedBuilder()
     .setTitle(`📦 Archived Ad: ${subject}`)
-    .setDescription(adData.embed?.description || '(no description)')
+    .setDescription(embedDescription)
     .addFields(
       { name: 'Ad Code', value: adData.adCode || '(none)', inline: true },
       { name: 'Level', value: level, inline: true },
@@ -1052,8 +1103,11 @@ function buildArchiveEmbed(adData, msgId, reason, archivedBy) {
       { name: 'Original Message ID', value: msgId }
     )
     .setTimestamp();
+  if (overflowMessages.length) {
+    embed.setFooter({ text: 'Full archived ad details continue in the next message(s).' });
+  }
   if (adData.embed?.color) { try { embed.setColor(adData.embed.color); } catch (e) {} }
-  return embed;
+  return { embed, overflowMessages };
 }
 
 // Helper: get student IDs currently assigned to a given tutor
@@ -1872,42 +1926,7 @@ client.on('interactionCreate', async (interaction) => {
           return interaction.reply({ content: 'Could not find ad details. Please try again later.', ephemeral: true }).catch(() => {});
         }
 
-        const details = adData.fullDetails;
-        const policiesChannelMention = TUTOR_POLICIES_CHANNEL_ID ? `<#${TUTOR_POLICIES_CHANNEL_ID}>` : '#tutors-link-policies';
-        
-        // Build full details embed
-        let detailsMessage = '';
-        detailsMessage += `**Subject Level:** ${details.subjectLevel || 'N/A'}\n`;
-        detailsMessage += `**Subject Codes:** ${details.subjectCodes || 'N/A'}\n\n`;
-        
-        detailsMessage += `**Languages:** ${details.languages || 'N/A'}\n`;
-        detailsMessage += `**Class Type:** ${details.classType || 'N/A'}\n`;
-        detailsMessage += `**Class Duration:** ${details.classDuration || 'N/A'}\n`;
-        detailsMessage += `**Monthly Schedule:** ${details.monthlySchedule || 'N/A'}\n`;
-        if (details.price && details.price1on1) {
-          detailsMessage += `**Price (Group):** $${details.price}\n`;
-          detailsMessage += `**Price (1-on-1):** $${details.price1on1}\n`;
-        } else if (details.price) {
-          detailsMessage += `**Price:** $${details.price}\n`;
-        } else if (details.price1on1) {
-          detailsMessage += `**Price (1-on-1):** $${details.price1on1}\n`;
-        } else {
-          detailsMessage += `**Price:** Contact for pricing\n`;
-        }
-        detailsMessage += `**Timezone:** ${details.timezone || 'N/A'}\n\n`;
-        
-        if (details.tutorMessage) {
-          detailsMessage += `**Message from Tutor:**\n${details.tutorMessage}\n\n`;
-        }
-        
-        if (details.testimonials) {
-          detailsMessage += `**Student Testimonials:**\n${details.testimonials}\n\n`;
-        }
-        
-        detailsMessage += `**Payment Terms:** ${details.paymentTerms || '100% upfront before classes begin'}\n\n`;
-        detailsMessage += `You'll be connected with the tutor once the initial payment is confirmed.\n\n`;
-        detailsMessage += `Make sure you follow ${policiesChannelMention} throughout the entire process.\n\n`;
-        detailsMessage += `Once you're ready to pay, DM <@${client.user.id}> and you will be guided to the next steps.`;
+        const detailsMessage = buildFullDetailsDescription(adData.fullDetails, { includeFooter: true });
         
         const detailsEmbed = new EmbedBuilder()
           .setTitle(`${subject} - Full Details`)
@@ -4803,9 +4822,12 @@ if (cmd === 'createad') {
           try {
             const archiveCh = await interaction.guild.channels.fetch(ARCHIVED_ADS_CHANNEL_ID).catch(() => null);
             if (archiveCh) {
-              const archiveEmbed = buildArchiveEmbed(adData, findMessageId, reason, interaction.user.id);
+              const { embed: archiveEmbed, overflowMessages } = buildArchiveEmbed(adData, findMessageId, reason, interaction.user.id);
               archiveEmbed.addFields({ name: 'Archived By', value: `<@${interaction.user.id}>` });
               await archiveCh.send({ embeds: [archiveEmbed] }).catch(e => console.warn('deletead: archive post failed', e));
+              for (const message of overflowMessages) {
+                await archiveCh.send({ content: message }).catch(e => console.warn('deletead: archive overflow post failed', e));
+              }
             }
           } catch (e) { console.warn('deletead: failed to post to archive channel', e); }
         }
@@ -5625,8 +5647,11 @@ client.on('guildMemberRemove', async (member) => {
         if (ARCHIVED_ADS_CHANNEL_ID) {
           const archiveCh = await guild.channels.fetch(ARCHIVED_ADS_CHANNEL_ID).catch(() => null);
           if (archiveCh) {
-            const archiveEmbed = buildArchiveEmbed(adData, msgId, reason, 'system');
+            const { embed: archiveEmbed, overflowMessages } = buildArchiveEmbed(adData, msgId, reason, 'system');
             await archiveCh.send({ embeds: [archiveEmbed] }).catch(e => console.warn('guildMemberRemove: archive post failed', e));
+            for (const message of overflowMessages) {
+              await archiveCh.send({ content: message }).catch(e => console.warn('guildMemberRemove: archive overflow post failed', e));
+            }
           }
         }
 
