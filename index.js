@@ -96,6 +96,8 @@ const {
   SYNC_WEBHOOK_URL
 } = process.env;
 
+const TUTORS_LOUNGE_CATEGORY_ID = '1429172429304889427';
+
 const REQUIRED_ENV_VARS = {
   BOT_TOKEN,
   GUILD_ID,
@@ -323,6 +325,27 @@ function formatSubjectResolutionError(rawInput, suggestions = []) {
 
 function getAllTutorIds() {
   return sortStringsCaseInsensitive(Array.from(new Set(Object.values(db.subjectTutors || {}).flat().map(id => String(id)))));
+}
+
+async function syncTutorsLoungeCategoryAccess() {
+  try {
+    if (!TUTORS_LOUNGE_CATEGORY_ID || !GUILD_ID) return;
+    const guild = await client.guilds.fetch(GUILD_ID).catch(() => null);
+    if (!guild) return;
+
+    const category = await guild.channels.fetch(TUTORS_LOUNGE_CATEGORY_ID).catch(() => null);
+    if (!category || category.type !== ChannelType.GuildCategory) return;
+
+    const overwrites = [
+      { id: guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+      ...getStaffRoleIds().map(rid => ({ id: rid, allow: [PermissionsBitField.Flags.ViewChannel] })),
+      ...getAllTutorIds().map(userId => ({ id: userId, allow: [PermissionsBitField.Flags.ViewChannel] }))
+    ];
+
+    await category.permissionOverwrites.set(overwrites);
+  } catch (e) {
+    console.warn('syncTutorsLoungeCategoryAccess failed', e?.message || e);
+  }
 }
 
 function resolveTutorInput(rawInput) {
@@ -1611,6 +1634,8 @@ async function grantTutorAccess(userId) {
       console.warn('grantTutorAccess outer error', e);
     }
   }
+
+  await syncTutorsLoungeCategoryAccess();
 }
 
 // Revoke tutor access and remove students assignment for that tutor
@@ -1661,6 +1686,8 @@ async function revokeTutorAccess(userId) {
   } catch (e) {
     console.warn('revokeTutorAccess cleanup failed', e);
   }
+
+  await syncTutorsLoungeCategoryAccess();
 }
 
 // register slash commands
@@ -1833,6 +1860,7 @@ client.once('ready', async () => {
   }
 
   await registerCommands();
+  await syncTutorsLoungeCategoryAccess();
   try { client.user.setActivity('DM for ModMail', { type: 3 }); } catch (e) {}
 });
 
@@ -4297,7 +4325,7 @@ if (cmd === 'close') {
           db.subjects = db.subjects.filter(s => s !== subj);
           delete db.subjectTutors[subj];
           if (db.subjectLevels) delete db.subjectLevels[subj];
-          saveDB(); await registerCommands();
+          saveDB(); await registerCommands(); await syncTutorsLoungeCategoryAccess();
           return interaction.reply({ content: `Subject removed: ${subj}`, ephemeral: true }).catch(() => {});
         } else {
           if (!db.subjects || db.subjects.length === 0) return interaction.reply({ content: 'No subjects found.', ephemeral: true }).catch(() => {});
