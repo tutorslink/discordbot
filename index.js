@@ -1046,6 +1046,51 @@ if (db.reviewConfig && db.reviewConfig.delayDays && !db.reviewConfig.delaySecond
   }
 }
 
+async function cleanupLegacyInactivityTickets() {
+  try {
+    const now = Date.now();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+
+    for (const [code, ticket] of Object.entries(db.tickets || {})) {
+      try {
+        if (!ticket || !ticket.createdAt) continue;
+        if (ticket.inactivityClosedAt || ticket.inactivityNotified) continue;
+        const hasStudentMessage = (ticket.messages || []).some(m => m.who === 'Student');
+        if (hasStudentMessage) continue;
+        if (now - ticket.createdAt < TWENTY_FOUR_HOURS) continue;
+
+        ticket.inactivityClosedAt = now;
+        ticket.inactivityNotified = true;
+        saveDB();
+        await appwriteClient.syncDB(db).catch(err => {
+          console.warn(`ticket inactivity cleanup: failed to persist handled flag for ${code}`, err);
+        });
+
+        try {
+          const ch = await client.channels.fetch(ticket.ticketChannelId).catch(() => null);
+          if (ch) {
+            await ch.send('This ticket has been automatically closed due to inactivity (no message received within 24 hours).').catch(() => {});
+            await ch.delete('Auto-closed: no student message within 24 hours').catch(async (err) => {
+              console.warn(`ticket inactivity cleanup: channel delete failed for ${code}`, err);
+              try { await ch.permissionOverwrites.edit(ticket.studentId, { ViewChannel: false, SendMessages: false }).catch(() => {}); } catch (ee) {}
+            });
+          }
+        } catch (e) { console.warn(`ticket inactivity cleanup: channel cleanup failed for ${code}`, e); }
+
+        delete db.tickets[code];
+        saveDB();
+        await appwriteClient.syncDB(db).catch(err => {
+          console.warn(`ticket inactivity cleanup: failed to persist removal for ${code}`, err);
+        });
+      } catch (e) {
+        console.warn(`ticket inactivity cleanup: error for ticket ${code}`, e);
+      }
+    }
+  } catch (e) {
+    console.warn('legacy ticket inactivity cleanup error', e);
+  }
+}
+
 async function initializeDB() {
   let shouldSeedAppwrite = false;
   if (appwriteClient.isConfigured()) {
@@ -1179,6 +1224,8 @@ const client = new Client({
   ],
   partials: [Partials.Channel]
 });
+
+await cleanupLegacyInactivityTickets();
 
 // helpers
 
@@ -5738,12 +5785,20 @@ setInterval(async () => {
     for (const [code, ticket] of Object.entries(db.tickets || {})) {
       try {
         if (!ticket || !ticket.createdAt) continue;
+        if (ticket.inactivityClosedAt || ticket.inactivityNotified) continue;
         // ticket.messages uses who === 'Student' (hardcoded string) for the regular ticket system.
         // The modmail system uses who = "User " followed by user tag or ID — intentionally different.
         const hasStudentMessage = (ticket.messages || []).some(m => m.who === 'Student');
         if (hasStudentMessage) continue;
         // Act only after 24 hours have elapsed
         if (now - ticket.createdAt < TWENTY_FOUR_HOURS) continue;
+        // Mark as handled before any outbound action so restarts do not re-send the DM.
+        ticket.inactivityClosedAt = now;
+        ticket.inactivityNotified = true;
+        saveDB();
+        await appwriteClient.syncDB(db).catch(err => {
+          console.warn(`ticket inactivity: failed to persist handled flag for ${code}`, err);
+        });
         // DM the student
         try {
           const student = await client.users.fetch(ticket.studentId).catch(() => null);
