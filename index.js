@@ -457,6 +457,109 @@ async function handleOpenCreateAdModal(interaction, { requester, rawSubjectInput
   }
 }
 
+function buildCreateAdShortDescription({ price = '', price1on1 = '', timezone = '', languages = '' } = {}) {
+  let message = '';
+  if (price && price1on1) {
+    message += `**Price (Group):** $${price}\n`;
+    message += `**Price (1-on-1):** $${price1on1}\n`;
+  } else if (price) {
+    message += `**Price:** $${price}\n`;
+  } else if (price1on1) {
+    message += `**Price (1-on-1):** $${price1on1}\n`;
+  }
+  if (timezone) message += `**Timezone:** ${timezone}\n`;
+  if (languages) message += `**Languages:** ${languages}\n`;
+  if (message) message += '\n';
+  message += `Click "View Full Details" below for more information, or "Talk to Tutors!" to start a conversation.`;
+  return message;
+}
+
+function buildEditAdFullDetailsPrefill(adData) {
+  const details = adData?.fullDetails || {};
+  const subjectLevel = details.subjectLevel && details.subjectLevel !== 'NA' ? details.subjectLevel : '';
+  const subjectCodes = details.subjectCodes && details.subjectCodes !== 'NA' ? details.subjectCodes : '';
+  const languages = details.languages && details.languages !== 'NA' ? details.languages : '';
+  const classType = details.classType && details.classType !== 'NA' ? details.classType : '';
+  const classDuration = details.classDuration && details.classDuration !== 'NA' ? details.classDuration : '';
+  const monthlySchedule = details.monthlySchedule && details.monthlySchedule !== 'NA' ? details.monthlySchedule : '';
+  const price = details.price || '';
+  const price1on1 = details.price1on1 || '';
+  const timezone = details.timezone && details.timezone !== 'NA' ? details.timezone : '';
+  const tutorMessage = details.tutorMessage && details.tutorMessage !== 'NA' ? details.tutorMessage : '';
+  const testimonials = details.testimonials && details.testimonials !== 'NA' ? details.testimonials : '';
+  const paymentTerms = details.paymentTerms || '100% upfront before classes begin';
+
+  return {
+    subjectDetails: `Subject Level: ${subjectLevel}\nSubject codes: ${subjectCodes}`,
+    tutorDetails: `Languages: ${languages}\nClass Type: ${classType}\nClass Duration: ${classDuration}\nMonthly Schedule: ${monthlySchedule}\nPrice per Class (USD) for Group classes: ${price}\nPrice per Class (USD) for 1-on-1 classes: ${price1on1}\nTime zone: ${timezone}`,
+    optionalFields: `Message from tutor:\n${tutorMessage}\nStudent Testimonials:\n${testimonials}\nPayment Terms: ${paymentTerms}`
+  };
+}
+
+function buildEditAdShortModal(messageId, source, { preTitle = '', preDesc = '', preColor = '', preRoleId = '' } = {}) {
+  const modal = new ModalBuilder().setCustomId(`editad_modal|${messageId}|${source}`).setTitle(`Edit ad ${messageId}`);
+  const subjectInput = new TextInputBuilder()
+    .setCustomId('edit_ad_subject')
+    .setLabel('Subject')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setValue(String(preTitle || '').substring(0, 100))
+    .setPlaceholder(clampLabel(`Type the subject name${preTitle ? `, e.g. ${preTitle}` : ''}`, 100));
+  const msgInput = new TextInputBuilder().setCustomId('edit_ad_message').setLabel('Ad message').setStyle(TextInputStyle.Paragraph).setRequired(true).setValue((preDesc || '').substring(0, 4000));
+  const colorInput = new TextInputBuilder()
+    .setCustomId('edit_ad_color')
+    .setLabel('Optional embed color, example #ff0000')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setValue(preColor ? (preColor.startsWith('#') ? preColor : `#${preColor}`) : '');
+  const roleInput = new TextInputBuilder()
+    .setCustomId('edit_ad_role_mention')
+    .setLabel('Optional subject role mention')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setPlaceholder('Enter role ID to mention')
+    .setValue(preRoleId);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(subjectInput),
+    new ActionRowBuilder().addComponents(msgInput),
+    new ActionRowBuilder().addComponents(colorInput),
+    new ActionRowBuilder().addComponents(roleInput)
+  );
+  return modal;
+}
+
+function buildEditAdFullModal(messageId, source, adData) {
+  const prefill = buildEditAdFullDetailsPrefill(adData);
+  const subjectDetailsInput = new TextInputBuilder()
+    .setCustomId('edit_full_subject_details')
+    .setLabel('Subject Level & Codes')
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true)
+    .setValue(clampLabel(prefill.subjectDetails, 1000));
+  const tutorDetailsInput = new TextInputBuilder()
+    .setCustomId('edit_full_tutor_details')
+    .setLabel('Tutor Details & Pricing')
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true)
+    .setValue(clampLabel(prefill.tutorDetails, 1000));
+  const optionalFieldsInput = new TextInputBuilder()
+    .setCustomId('edit_full_optional_fields')
+    .setLabel('Optional: Message, Testimonials, Payment Terms')
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(false)
+    .setValue(clampLabel(prefill.optionalFields, 1000));
+
+  return new ModalBuilder()
+    .setCustomId(`editad_full_modal|${messageId}|${source}`)
+    .setTitle(`Edit full ad ${messageId}`)
+    .addComponents(
+      new ActionRowBuilder().addComponents(subjectDetailsInput),
+      new ActionRowBuilder().addComponents(tutorDetailsInput),
+      new ActionRowBuilder().addComponents(optionalFieldsInput)
+    );
+}
+
 function buildSubjectSelectOptions(subjects) {
   return sortStringsCaseInsensitive(subjects || []).map(subject => ({
     label: subject.substring(0, 100),
@@ -1622,6 +1725,44 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton()) {
       const custom = interaction.customId || '';
 
+      if (custom.startsWith('editad_choice|')) {
+        const parts = custom.split('|');
+        const messageId = parts[1];
+        const source = parts[2] || 'find';
+        const mode = parts[3] || 'short';
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit ads.', ephemeral: true }).catch(() => {});
+
+        const adData = source === 'find'
+          ? db.createAds[messageId] || null
+          : Object.values(db.createAds || {}).find(data => data && data.categoryMessageId === messageId) || null;
+
+        if (!adData) return interaction.reply({ content: 'Could not find ad data for this post.', ephemeral: true }).catch(() => {});
+
+        const preTitle = interaction.message?.embeds?.[0]?.title || adData.embed?.title || '';
+        const preDesc = interaction.message?.embeds?.[0]?.description || adData.embed?.description || '';
+        const preColor = adData.embed?.color || '';
+        let preRoleId = '';
+        const currentContent = interaction.message?.content || '';
+        const roleMatch = currentContent.match(/<@&(\d+)>/);
+        if (roleMatch) preRoleId = roleMatch[1];
+
+        try {
+          if (mode === 'full') {
+            if (!adData.fullDetails) {
+              return interaction.reply({ content: 'This ad does not have saved full-details data to edit yet.', ephemeral: true }).catch(() => {});
+            }
+            await interaction.showModal(buildEditAdFullModal(messageId, source, adData));
+          } else {
+            await interaction.showModal(buildEditAdShortModal(messageId, source, { preTitle, preDesc, preColor, preRoleId }));
+          }
+        } catch (err) {
+          console.error('showModal editad choice failed', err);
+          try { notifyStaffError(err, 'showModal editad choice', interaction); } catch (e) {}
+          return interaction.reply({ content: 'Could not open edit modal, try again.', ephemeral: true }).catch(() => {});
+        }
+        return;
+      }
+
       // Handle View Full Details button
       if (custom.startsWith('view_full_details|')) {
         // customId format:
@@ -2490,19 +2631,7 @@ client.on('interactionCreate', async (interaction) => {
             // Level is intentionally omitted here because ads are categorised into their
             // level-specific channels; it is still shown in "View Full Details".
             // Only include non-empty fields to avoid messy blank lines.
-            let message = '';
-            if (price && price1on1) {
-              message += `**Price (Group):** $${price}\n`;
-              message += `**Price (1-on-1):** $${price1on1}\n`;
-            } else if (price) {
-              message += `**Price:** $${price}\n`;
-            } else if (price1on1) {
-              message += `**Price (1-on-1):** $${price1on1}\n`;
-            }
-            if (timezone) message += `**Timezone:** ${timezone}\n`;
-            if (languages) message += `**Languages:** ${languages}\n`;
-            if (message) message += '\n';
-            message += `Click "View Full Details" below for more information, or "Talk to Tutors!" to start a conversation.`;
+            const message = buildCreateAdShortDescription({ price, price1on1, timezone, languages });
 
             // Generate a unique ad code (e.g. IG-1, AL-3) for this ad
             const adCode = generateAdCode(levelKey);
@@ -2782,6 +2911,191 @@ client.on('interactionCreate', async (interaction) => {
           resultMsg = 'Failed to update ad in any channel.';
         }
         
+        return interaction.editReply({ content: resultMsg }).catch(() => {});
+      }
+
+      if (interaction.customId && interaction.customId.startsWith('editad_full_modal|')) {
+        const parts = interaction.customId.split('|');
+        const messageId = parts[1];
+        const source = parts[2] || 'find';
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit ads.', ephemeral: true }).catch(() => {});
+
+        await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
+        let adData = null;
+        let findMessageId = null;
+        let categoryMessageId = null;
+
+        if (source === 'find') {
+          findMessageId = messageId;
+          adData = db.createAds[messageId];
+          if (adData && adData.categoryMessageId) categoryMessageId = adData.categoryMessageId;
+        } else {
+          categoryMessageId = messageId;
+          for (const [msgId, data] of Object.entries(db.createAds || {})) {
+            if (data.categoryMessageId === messageId) {
+              adData = data;
+              findMessageId = msgId;
+              break;
+            }
+          }
+        }
+
+        if (!adData) return interaction.editReply({ content: 'Could not find ad data for this post.' }).catch(() => {});
+
+        const findChannel = await interaction.guild.channels.fetch(FIND_A_TUTOR_CHANNEL_ID).catch(() => null);
+        let categoryChannel = null;
+        if (adData.categoryChannelId) {
+          categoryChannel = await interaction.guild.channels.fetch(adData.categoryChannelId).catch(() => null);
+        }
+
+        if (!findChannel && !categoryChannel) return interaction.editReply({ content: 'Could not find channels to update.' }).catch(() => {});
+
+        const subjectDetails = interaction.fields.getTextInputValue('edit_full_subject_details') || '';
+        const tutorDetails = interaction.fields.getTextInputValue('edit_full_tutor_details') || '';
+        const optionalFields = interaction.fields.getTextInputValue('edit_full_optional_fields') || '';
+
+        let subjectLevel = '';
+        let subjectCodes = '';
+        if (subjectDetails) {
+          const levelMatch = subjectDetails.match(/Subject Level:[ \t]*(.+?)(?:\n|$)/i);
+          const codesMatch = subjectDetails.match(/Subject codes?:[ \t]*(.+?)(?:\n|$)/i);
+          subjectLevel = levelMatch ? levelMatch[1].trim() : '';
+          subjectCodes = codesMatch ? codesMatch[1].trim() : '';
+        }
+
+        let languages = '';
+        let classType = '';
+        let classDuration = '';
+        let monthlySchedule = '';
+        let price = '';
+        let price1on1 = '';
+        let timezone = '';
+        if (tutorDetails) {
+          const langMatch = tutorDetails.match(/Languages?:[ \t]*(.+?)(?:\n|$)/i);
+          const typeMatch = tutorDetails.match(/Class Type:[ \t]*(.+?)(?:\n|$)/i);
+          const durationMatch = tutorDetails.match(/Class Duration:[ \t]*(.+?)(?:\n|$)/i);
+          const monthScheduleMatch = tutorDetails.match(/Monthly Schedule:[ \t]*(.+?)(?:\n|$)/i);
+          const weekMatch = tutorDetails.match(/Classes(?:\/| per )week:[ \t]*(.+?)(?:\n|$)/i);
+          const monthMatch = tutorDetails.match(/Classes(?:\/| per )month:[ \t]*(.+?)(?:\n|$)/i);
+          const priceGroupMatch = tutorDetails.match(/Price per Class[^:\n]*Group[^:\n]*:[ \t]*(.+?)(?:\n|$)/i);
+          const price1on1Match = tutorDetails.match(/Price per Class[^:\n]*1[-\s–]on[-\s–]1[^:\n]*:[ \t]*(.+?)(?:\n|$)/i);
+          const priceGenericMatch = (!priceGroupMatch && !price1on1Match) ? tutorDetails.match(/Price per Class[^:\n]*:[ \t]*(.+?)(?:\n|$)/i) : null;
+          const tzMatch = tutorDetails.match(/Time zone:[ \t]*(.+?)(?:\n|$)/i);
+          languages = langMatch ? langMatch[1].trim() : '';
+          classType = typeMatch ? typeMatch[1].trim() : '';
+          classDuration = durationMatch ? durationMatch[1].trim() : '';
+          const classesWeek = weekMatch ? weekMatch[1].trim() : '';
+          const classesMonth = monthMatch ? monthMatch[1].trim() : '';
+          if (monthScheduleMatch) {
+            monthlySchedule = monthScheduleMatch[1].trim();
+          } else if (classesWeek && classesMonth) {
+            monthlySchedule = `${classesWeek} classes/week = ${classesMonth} classes/month`;
+          } else if (classesWeek) {
+            monthlySchedule = `${classesWeek} classes/week`;
+          } else if (classesMonth) {
+            monthlySchedule = `${classesMonth} classes/month`;
+          }
+          price = priceGroupMatch ? priceGroupMatch[1].trim() : (priceGenericMatch ? priceGenericMatch[1].trim() : '');
+          price1on1 = price1on1Match ? price1on1Match[1].trim() : '';
+          timezone = tzMatch ? tzMatch[1].trim() : '';
+        }
+
+        let tutorMessage = '';
+        let testimonials = '';
+        let paymentTerms = '100% upfront before classes begin';
+        if (optionalFields) {
+          const tutorMsgMatch = optionalFields.match(/Message from tutor:[ \t]*(.+?)(?:\n|Student|Payment|$)/is);
+          if (tutorMsgMatch) tutorMessage = tutorMsgMatch[1].trim();
+          const testMatch = optionalFields.match(/Student Testimonials?:[ \t]*(.+?)(?:\n|Payment|$)/is);
+          if (testMatch) testimonials = testMatch[1].trim();
+          const paymentMatch = optionalFields.match(/Payment Terms?:[ \t]*(.+?)(?:\n|$)/is);
+          if (paymentMatch) paymentTerms = paymentMatch[1].trim();
+        }
+
+        const details = {
+          subjectLevel: subjectLevel || 'NA',
+          subjectCodes: subjectCodes || 'NA',
+          languages: languages || 'NA',
+          classType: classType || 'NA',
+          classDuration: classDuration || 'NA',
+          monthlySchedule: monthlySchedule || 'NA',
+          price,
+          price1on1,
+          timezone: timezone || 'NA',
+          tutorMessage,
+          testimonials,
+          paymentTerms
+        };
+
+        const subject = adData.embed?.title || 'Ad';
+        const colorVal = adData.embed?.color || db.defaultEmbedColor || null;
+        const shortDescription = buildCreateAdShortDescription({ price, price1on1, timezone, languages });
+        const embed = new EmbedBuilder().setTitle(subject).setDescription(shortDescription).setTimestamp();
+        if (colorVal) {
+          try { embed.setColor(String(colorVal)); } catch (e) {}
+        }
+
+        let messageContent = undefined;
+        try {
+          if (findMessageId && findChannel) {
+            const existingFindMsg = await findChannel.messages.fetch(findMessageId).catch(() => null);
+            if (existingFindMsg && existingFindMsg.content) messageContent = existingFindMsg.content || undefined;
+          }
+          if (!messageContent && categoryMessageId && categoryChannel) {
+            const existingCategoryMsg = await categoryChannel.messages.fetch(categoryMessageId).catch(() => null);
+            if (existingCategoryMsg && existingCategoryMsg.content) messageContent = existingCategoryMsg.content || undefined;
+          }
+        } catch (e) {
+          messageContent = undefined;
+        }
+
+        let findUpdateSuccess = false;
+        if (findChannel && findMessageId) {
+          try {
+            const findMsg = await findChannel.messages.fetch(findMessageId).catch(() => null);
+            if (findMsg) {
+              await findMsg.edit({ content: messageContent, embeds: [embed] }).catch(err => { console.error('edit full ad in find channel failed', err); throw err; });
+              findUpdateSuccess = true;
+            }
+          } catch (e) {
+            console.warn('Failed to update find-a-tutor message during full edit', e);
+          }
+        }
+
+        let categoryUpdateSuccess = false;
+        if (categoryChannel && categoryMessageId) {
+          try {
+            const categoryMsg = await categoryChannel.messages.fetch(categoryMessageId).catch(() => null);
+            if (categoryMsg) {
+              await categoryMsg.edit({ content: messageContent, embeds: [embed] }).catch(err => { console.error('edit full ad in category channel failed', err); throw err; });
+              categoryUpdateSuccess = true;
+            }
+          } catch (e) {
+            console.warn('Failed to update category message during full edit', e);
+          }
+        }
+
+        if (findMessageId && adData) {
+          db.createAds[findMessageId] = {
+            ...adData,
+            embed: { title: subject, description: shortDescription, color: colorVal },
+            fullDetails: details
+          };
+          saveDB();
+        }
+
+        let resultMsg = 'Detailed ad updated';
+        if (findUpdateSuccess && categoryUpdateSuccess) {
+          resultMsg = 'Detailed ad updated in both find-a-tutor and category channel.';
+        } else if (findUpdateSuccess) {
+          resultMsg = 'Detailed ad updated in find-a-tutor. (Category channel update failed)';
+        } else if (categoryUpdateSuccess) {
+          resultMsg = 'Detailed ad updated in category channel. (Find-a-tutor update failed)';
+        } else {
+          resultMsg = 'Failed to update detailed ad in any channel.';
+        }
+
         return interaction.editReply({ content: resultMsg }).catch(() => {});
       }
 
@@ -3142,7 +3456,7 @@ client.on('interactionCreate', async (interaction) => {
         const subjectOptions = buildSubjectSelectOptions(subjectsForLevel);
         const subjectSelect = buildPaginatedSelectMenu({
           baseCustomId: `createad_subject|${requester}|${levelKey}`,
-          placeholder: 'Select subject (type to search)',
+          placeholder: 'Select subject',
           options: subjectOptions,
           page: 0,
           required: true
@@ -3184,7 +3498,7 @@ client.on('interactionCreate', async (interaction) => {
           const nextPage = getPagedNavigationTarget(page, chosen);
           const subjectSelect = buildPaginatedSelectMenu({
             baseCustomId: `createad_subject|${requester}|${levelKey}`,
-            placeholder: 'Select subject (type to search)',
+            placeholder: 'Select subject',
             options: subjectOptions,
             page: nextPage,
             required: true
@@ -3205,7 +3519,7 @@ client.on('interactionCreate', async (interaction) => {
         });
         const tutorSelect = buildPaginatedSelectMenu({
           baseCustomId: `createad_tutor|${requester}|${levelKey}|${encodeURIComponent(subject)}`,
-          placeholder: 'Select tutor (type to search)',
+          placeholder: 'Select tutor',
           options: tutorOptions,
           page: 0,
           required: true
@@ -3239,7 +3553,7 @@ client.on('interactionCreate', async (interaction) => {
           const nextPage = getPagedNavigationTarget(page, chosen);
           const tutorSelect = buildPaginatedSelectMenu({
             baseCustomId: `createad_tutor|${requester}|${levelKey}|${encodeURIComponent(subject)}`,
-            placeholder: 'Select tutor (type to search)',
+            placeholder: 'Select tutor',
             options: tutorOptions,
             page: nextPage,
             required: true
@@ -4504,39 +4818,16 @@ if (cmd === 'createad') {
             return interaction.reply({ content: 'No subjects available. Please add subjects first using /subject add', ephemeral: true }).catch(() => {});
         }
 
-        const modal = new ModalBuilder().setCustomId(`editad_modal|${messageId}|${foundInCategoryChannel ? 'category' : 'find'}`).setTitle(`Edit ad ${messageId}`);
-        const subjectInput = new TextInputBuilder()
-            .setCustomId('edit_ad_subject')
-            .setLabel('Subject')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-            .setValue(String(preTitle || '').substring(0, 100))
-            .setPlaceholder(clampLabel(`Type the subject name${preTitle ? `, e.g. ${preTitle}` : ''}`, 100));
-        const msgInput = new TextInputBuilder().setCustomId('edit_ad_message').setLabel('Ad message').setStyle(TextInputStyle.Paragraph).setRequired(true).setValue((preDesc || '').substring(0, 4000));
-        
-        const colorInput = new TextInputBuilder()
-            .setCustomId('edit_ad_color')
-            .setLabel('Optional embed color, example #ff0000')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(false)
-            .setValue(preColor ? (preColor.startsWith('#') ? preColor : `#${preColor}`) : '');
-        
-        const roleInput = new TextInputBuilder()
-            .setCustomId('edit_ad_role_mention')
-            .setLabel('Optional subject role mention')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(false)
-            .setPlaceholder('Enter role ID to mention')
-            .setValue(preRoleId);
-        
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(subjectInput),
-            new ActionRowBuilder().addComponents(msgInput),
-            new ActionRowBuilder().addComponents(colorInput),
-            new ActionRowBuilder().addComponents(roleInput)
+        const choiceRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`editad_choice|${messageId}|${foundInCategoryChannel ? 'category' : 'find'}|short`).setLabel('Edit short version').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId(`editad_choice|${messageId}|${foundInCategoryChannel ? 'category' : 'find'}|full`).setLabel('Edit full detailed ad').setStyle(ButtonStyle.Secondary)
         );
-        try { await interaction.showModal(modal); } catch (err) { console.error('showModal editad failed', err); try { notifyStaffError(err, 'showModal editad', interaction); } catch (e) {} return interaction.reply({ content: 'Could not open edit modal, try again.', ephemeral: true }); }
-        return;
+
+        return interaction.reply({
+          content: 'Which version do you want to edit?',
+          components: [choiceRow],
+          ephemeral: true
+        }).catch(() => {});
       }
 
       // deletead command — archive and remove an ad

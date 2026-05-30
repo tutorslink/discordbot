@@ -61,6 +61,7 @@ Isofusie is a feature-rich Discord bot built for managing a tutoring community s
 ### 🧑‍🎓 Student Assignment
 - Assign students to a tutor with `/student add` using Discord user pickers for both the student and tutor
 - Remove student assignments with `/student remove` using the same picker-based flow
+- List student assignments with `/student list`, with buttons to cycle filters and sorting
 - Student assignment data is stored per tutor and visible in their profile
 
 ### 🎙️ Voice Recording (Demo Sessions)
