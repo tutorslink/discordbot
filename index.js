@@ -80,6 +80,8 @@ const {
   BOT_TOKEN,
   GUILD_ID,
   STAFF_ROLE_ID,
+  MANAGER_ROLE_ID,
+  ISOFUSIE_ROLE_ID,
   STAFF_CHAT_ID,
   FIND_A_TUTOR_CHANNEL_ID,
   TUTORS_FEED_CHANNEL_ID,
@@ -97,6 +99,7 @@ const {
 } = process.env;
 
 const TUTORS_LOUNGE_CATEGORY_ID = '1429172429304889427';
+const BOT_DEVELOPER_ROLE_ID = process.env.BOT_DEVELOPER_ROLE_ID || '1443743476192907284';
 
 const REQUIRED_ENV_VARS = {
   BOT_TOKEN,
@@ -149,6 +152,8 @@ let db = {
   subjectLevels: {}, // map subjectName -> levelKey (e.g. { 'IGCSE/GCSE Maths': 'igcse' })
   subjectTutors: { 'IGCSE Maths': ['742420325559435375', '873095080938975232'] }, // tutor user ids
   initMessage: 'Hello, thanks for requesting a tutor for **{subject}**. Please tell us your topic, availability, timezone. Do not post contact info.',
+  keywordTrigger: null,
+  keywordResponse: null,
   tickets: {},
   cooldowns: {},
   sticky: null, // { title, body, color, messageId }
@@ -336,9 +341,10 @@ async function syncTutorsLoungeCategoryAccess() {
     const category = await guild.channels.fetch(TUTORS_LOUNGE_CATEGORY_ID).catch(() => null);
     if (!category || category.type !== ChannelType.GuildCategory) return;
 
+    const accessRoleIds = Array.from(new Set([MANAGER_ROLE_ID, ISOFUSIE_ROLE_ID].filter(Boolean).map(s => String(s).trim())));
     const overwrites = [
       { id: guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-      ...getStaffRoleIds().map(rid => ({ id: rid, allow: [PermissionsBitField.Flags.ViewChannel] })),
+      ...accessRoleIds.map(rid => ({ id: rid, allow: [PermissionsBitField.Flags.ViewChannel] })),
       ...getAllTutorIds().map(userId => ({ id: userId, allow: [PermissionsBitField.Flags.ViewChannel] }))
     ];
 
@@ -610,7 +616,7 @@ function buildEditAdFullModal(messageId, source, adData) {
     .setValue(clampLabel(prefill.tutorDetails, 1000));
   const optionalFieldsInput = new TextInputBuilder()
     .setCustomId('edit_full_optional_fields')
-    .setLabel('Optional: Message, Testimonials, Payment Terms')
+    .setLabel('Optional: Msg, Testimonials, Payment')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(false)
     .setValue(clampLabel(prefill.optionalFields, 1000));
@@ -623,6 +629,21 @@ function buildEditAdFullModal(messageId, source, adData) {
       new ActionRowBuilder().addComponents(tutorDetailsInput),
       new ActionRowBuilder().addComponents(optionalFieldsInput)
     );
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function messageContainsTrigger(content, keyword) {
+  const haystack = String(content || '').toLowerCase();
+  const needle = String(keyword || '').trim().toLowerCase();
+  if (!haystack || !needle) return false;
+  if (/^[\w\s-]+$/i.test(needle)) {
+    const pattern = new RegExp(`(^|[^\\p{L}\\p{N}_])${escapeRegExp(needle)}([^\\p{L}\\p{N}_]|$)`, 'iu');
+    return pattern.test(content);
+  }
+  return haystack.includes(needle);
 }
 
 function buildSubjectSelectOptions(subjects) {
@@ -1406,6 +1427,12 @@ function getStaffRoleIds() {
   return Array.from(new Set([...base, ...extras]));
 }
 
+function getAlertRoleIds() {
+  const base = (STAFF_ROLE_ID || '').split(',').map(s => s.trim()).filter(Boolean);
+  const extras = [BOT_DEVELOPER_ROLE_ID, ISOFUSIE_ROLE_ID].filter(Boolean).map(s => String(s).trim());
+  return Array.from(new Set([...base, ...extras]));
+}
+
 function isStaff(member) {
   if (!member) return false;
   const staffRoleIds = getStaffRoleIds();
@@ -1453,7 +1480,7 @@ async function notifyStaffError(err, source = '(unknown)', context = null) {
       }
     } catch (e) { /* ignore */ }
 
-    const mentionText = getStaffRoleIds().length ? getStaffRoleIds().map(r => `<@&${r}>`).join(' ') : '';
+    const mentionText = getAlertRoleIds().length ? getAlertRoleIds().map(r => `<@&${r}>`).join(' ') : '';
 
     // Ensure the field value doesn't exceed 1024 characters (Discord limit)
     const errorFieldValue = `\`\`\`\n${safe}\n\`\`\``;
@@ -1760,6 +1787,15 @@ async function registerCommands() {
       name: 'editad',
       description: 'Edit an existing ad by message id, preloads content',
       options: [{ name: 'messageid', description: 'Message id of the ad to edit', type: 3, required: true }],
+      default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
+    },
+    {
+      name: 'keyword',
+      description: 'Set a server-wide trigger keyword and auto-response',
+      options: [
+        { name: 'keyword', description: 'The word or phrase to watch for', type: 3, required: true },
+        { name: 'response', description: 'The bot response to post when triggered', type: 3, required: true }
+      ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
     {
@@ -4994,9 +5030,23 @@ if (cmd === 'createad') {
 
       if (cmd === 'help') return interaction.reply({ content: `Commands:\n/enquire subject:<choice>\n/reply code message\n/help\n/bumpleaderboard`, ephemeral: true }).catch(() => {});
 
+      if (cmd === 'keyword') {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can set keyword responses.', ephemeral: true }).catch(() => {});
+        const keyword = String(interaction.options.getString('keyword', true) || '').trim();
+        const response = String(interaction.options.getString('response', true) || '').trim();
+        if (!keyword) return interaction.reply({ content: 'Please provide a keyword to watch for.', ephemeral: true }).catch(() => {});
+        if (!response) return interaction.reply({ content: 'Please provide a response message.', ephemeral: true }).catch(() => {});
+
+        db.keywordTrigger = keyword.substring(0, 100);
+        db.keywordResponse = response.substring(0, 2000);
+        saveDB();
+
+        return interaction.reply({ content: `Keyword trigger set to **${db.keywordTrigger}**. The bot will now respond when it appears in a message.`, ephemeral: true }).catch(() => {});
+      }
+
       if (cmd === 'staffhelp') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can access this.', ephemeral: true }).catch(() => {});
-        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list [level] [tutor-assigned:yes/no/all]\n/tutor add/remove/list/info [user:@mention]\n/createad\n/editad\n/deletead\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove [student:tutor user pickers]\n/modmailmap [purpose/category]\n/reviewreminder\n/migrateads [force:true]`, ephemeral: true }).catch(() => {});
+        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list [level] [tutor-assigned:yes/no/all]\n/tutor add/remove/list/info [user:@mention]\n/createad\n/editad\n/keyword\n/deletead\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove [student:tutor user pickers]\n/modmailmap [purpose/category]\n/reviewreminder\n/migrateads [force:true]`, ephemeral: true }).catch(() => {});
       }
 
       // bumpleaderboard command
@@ -5477,6 +5527,12 @@ client.on('messageCreate', async (message) => {
     }
     
     if (message.author?.bot) return;
+
+    const keywordTrigger = String(db.keywordTrigger || '').trim();
+    const keywordResponse = String(db.keywordResponse || '').trim();
+    if (keywordTrigger && keywordResponse && messageContainsTrigger(message.content || '', keywordTrigger)) {
+      await message.channel.send({ content: keywordResponse.substring(0, 2000) }).catch(() => {});
+    }
 
     // sticky: if any message posted in find-a-tutor, repost sticky immediately (no staff ping)
     if (String(message.channel.id) === String(FIND_A_TUTOR_CHANNEL_ID)) {

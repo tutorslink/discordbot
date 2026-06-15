@@ -56,6 +56,8 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
   const {
     GUILD_ID,
     STAFF_ROLE_ID,
+    ISOFUSIE_ROLE_ID,
+    BOT_DEVELOPER_ROLE_ID = '1443743476192907284',
     MODMAIL_TRANSCRIPTS_CHANNEL_ID: ENV_MODMAIL_TRANSCRIPTS_CHANNEL_ID,
     STAFF_CHAT_ID
   } = process.env;
@@ -80,6 +82,14 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
   // Support multiple staff role ids
   function getStaffRoleIds() {
     return (STAFF_ROLE_ID || '').split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+  function getAlertRoleIds() {
+    return Array.from(new Set([
+      ...getStaffRoleIds(),
+      ...(BOT_DEVELOPER_ROLE_ID ? [String(BOT_DEVELOPER_ROLE_ID).trim()] : []),
+      ...(ISOFUSIE_ROLE_ID ? [String(ISOFUSIE_ROLE_ID).trim()] : [])
+    ].filter(Boolean)));
   }
 
   function isStaff(member) {
@@ -136,7 +146,7 @@ async function notifyStaff(err, context = {}) {
     }
 
     const ch = await client.channels.fetch(STAFF_CHAT_ID).catch(() => null);
-    const roleMentions = getStaffRoleIds().map(r => `<@&${r}>`).join(' ');
+    const roleMentions = getAlertRoleIds().map(r => `<@&${r}>`).join(' ');
     const short = `⚠️ Modmail error in module modmail.js
 ${roleMentions}
 User: ${context.userId || '(n/a)'}
@@ -651,7 +661,7 @@ ${String(err && (err.stack || err))}`;
         try { await sendOrUpdateUserControl(ticket); } catch (e) { /* logged inside */ }
         // ping staff roles in channel if possible
         try {
-          const mention = getStaffRoleIds().map(r => `<@&${r}>`).join(' ');
+          const mention = getAlertRoleIds().map(r => `<@&${r}>`).join(' ');
           await channel.send({ content: `${mention} New modmail from <@${userId}> started. Purpose: ${purposeLabel}. Ticket ID: modmail-${ticket.id}` }).catch(() => {});
         } catch (e) { /* ignore */ }
         await updateSticky(channel.id).catch(() => {});
@@ -1242,7 +1252,7 @@ ${String(err && (err.stack || err))}`;
         saveDB();
         const ch = await client.channels.fetch(channelId).catch(() => null);
         if (ch) {
-          try { await ch.send({ content: getStaffRoleIds().map(r => `<@&${r}>`).join(' ') + ' User requested a ping' }).catch(() => {}); } catch (e) {}
+          try { await ch.send({ content: getAlertRoleIds().map(r => `<@&${r}>`).join(' ') + ' User requested a ping' }).catch(() => {}); } catch (e) {}
         }
         return safeReply(interaction, { content: 'Staff pinged, please wait for a reply.', ephemeral: true });
       }
