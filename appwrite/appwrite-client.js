@@ -249,13 +249,14 @@ async function syncAdsCollection(createAds) {
   if (!createAds || typeof createAds !== 'object') return;
   for (const [messageId, ad] of Object.entries(createAds)) {
     const title = String(ad?.embed?.title || ad?.title || '').trim() || 'Untitled';
-    const body = String(ad?.embed?.description || ad?.body || '').trim() || '(no description)';
+    const description = String(ad?.embed?.description || ad?.body || '').trim() || '(no description)';
     const createdBy = ad?.tutorId ? String(ad.tutorId) : null;
     const status = String(ad?.status || 'active');
 
     await upsertDoc(COLLECTION_IDS.ads, String(messageId), {
       title,
-      body,
+      description,
+      body: description,
       status,
       Source: JSON.stringify({ origin: 'discordbot', messageId, ad }),
       messageId: String(messageId),
