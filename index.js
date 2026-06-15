@@ -12,7 +12,7 @@
  * - Review reminders scheduling, pending reviews stored and require staff approval
  * - /reviewreminder modal to change reminder delay
  * - Timestamps in transcripts use Discord timestamp format <t:SECONDS:f>
- * - /embedcolor updates sticky and createad embed colors, now affects sticky as before
+ * - /embedcolor updates sticky and ad embed colors, now affects sticky as before
  */
 import 'newrelic';
 import fs from 'fs';
@@ -123,7 +123,7 @@ if (missingVars.length > 0) {
 // (guild different from 1360708397850431488). Without a categoryId, findSubjectChannel()
 // falls back to searching the guild's channel cache by categoryName, which is reliable
 // as long as the categories exist on the production server with these exact names.
-// To restore ID-based fast-path lookups, run /exportchannels on the production server
+// Legacy note: older deployments used /exportchannels to capture channel IDs.
 // and add the correct IDs here.
 const CREATEAD_LEVEL_CONFIG = {
   igcse:       { categoryName: 'IGCSE Tutors',       prefix: 'ig-'        },
@@ -152,8 +152,7 @@ let db = {
   subjectLevels: {}, // map subjectName -> levelKey (e.g. { 'IGCSE/GCSE Maths': 'igcse' })
   subjectTutors: { 'IGCSE Maths': ['742420325559435375', '873095080938975232'] }, // tutor user ids
   initMessage: 'Hello, thanks for requesting a tutor for **{subject}**. Please tell us your topic, availability, timezone. Do not post contact info.',
-  keywordTrigger: null,
-  keywordResponse: null,
+  keywordAutomations: [],
   tickets: {},
   cooldowns: {},
   sticky: null, // { title, body, color, messageId }
@@ -1055,6 +1054,24 @@ function loadDB() {
       const raw = fs.readFileSync(DATA_FILE, 'utf8');
       const parsed = JSON.parse(raw);
       db = Object.assign(db, parsed);
+      // Migrate legacy single keyword trigger/response into the new keyword list.
+      const migratedKeywords = normalizeKeywordAutomations(db.keywordAutomations);
+      const legacyKeyword = String(db.keywordTrigger || '').trim();
+      const legacyResponse = String(db.keywordResponse || '').trim();
+      let keywordMigrationChanged = false;
+      if (legacyKeyword && legacyResponse) {
+        migratedKeywords.push({
+          keyword: legacyKeyword.substring(0, 100),
+          response: legacyResponse.substring(0, 2000),
+          createdAt: Date.now(),
+          createdBy: null
+        });
+        keywordMigrationChanged = true;
+      }
+      db.keywordAutomations = normalizeKeywordAutomations(migratedKeywords);
+      delete db.keywordTrigger;
+      delete db.keywordResponse;
+      if (keywordMigrationChanged) saveDB();
       // Migrate old delayDays to delaySeconds if needed
 if (db.reviewConfig && db.reviewConfig.delayDays && !db.reviewConfig.delaySeconds) {
   db.reviewConfig.delaySeconds = db.reviewConfig.delayDays * 24 * 60 * 60;
@@ -1204,6 +1221,62 @@ function getStudentsAssignedToTutor(tutorId) {
   return Object.entries(db.studentAssignments || {})
     .filter(([, asg]) => asg && String(asg.tutorId) === String(tutorId))
     .map(([studentId]) => studentId);
+}
+
+function normalizeKeywordAutomations(rawEntries) {
+  const list = Array.isArray(rawEntries) ? rawEntries : [];
+  const seen = new Map();
+
+  for (const entry of list) {
+    const keyword = String(entry?.keyword || '').trim();
+    const response = String(entry?.response || '').trim();
+    if (!keyword || !response) continue;
+
+    const key = keyword.toLowerCase();
+    if (seen.has(key)) continue;
+
+    seen.set(key, {
+      keyword: keyword.substring(0, 100),
+      response: response.substring(0, 2000),
+      createdAt: Number(entry?.createdAt) || Date.now(),
+      createdBy: entry?.createdBy ? String(entry.createdBy) : null
+    });
+  }
+
+  return [...seen.values()];
+}
+
+async function formatUserLabel(guild, userId) {
+  const id = String(userId || '').trim();
+  if (!id) return '(unknown)';
+
+  try {
+    const cachedMember = guild?.members?.cache?.get(id) || null;
+    if (cachedMember?.user) {
+      const name = cachedMember.displayName || cachedMember.user.username || id;
+      return `${name} (<@${id}>)`;
+    }
+
+    if (guild?.members?.fetch) {
+      const fetchedMember = await guild.members.fetch(id).catch(() => null);
+      if (fetchedMember?.user) {
+        const name = fetchedMember.displayName || fetchedMember.user.username || id;
+        return `${name} (<@${id}>)`;
+      }
+    }
+
+    const cachedUser = client.users.cache.get(id) || null;
+    if (cachedUser) {
+      return `${cachedUser.username || id} (<@${id}>)`;
+    }
+
+    const fetchedUser = await client.users.fetch(id).catch(() => null);
+    if (fetchedUser) {
+      return `${fetchedUser.username || id} (<@${id}>)`;
+    }
+  } catch (e) {}
+
+  return `<@${id}>`;
 }
 
 // Helper function to split long messages into chunks that fit Discord's 2000 character limit
@@ -1605,10 +1678,10 @@ async function postToTutorsFeed(guild, ticketCode, subject, firstMessage, ticket
   const tutorsMessage = await tutorsFeed.send({ content }).catch(err => { throw err; });
   const threadName = `Enquiry ${subject || ticketCode}`;
   const thread = await tutorsMessage.startThread({ name: threadName.substring(0, 100), autoArchiveDuration: 1440 }).catch(() => null);
-  if (thread) {
-    ticket.tutorThreadId = thread.id;
-    await thread.send(
-      `📌 **How to reply to the student in this thread:**\n` +
+    if (thread) {
+      ticket.tutorThreadId = thread.id;
+      await thread.send(
+      `📌 **How to message the student in this thread:**\n` +
       `• Messages you send here are **automatically forwarded** to the student.\n` +
       `• Prefix a message with \`=\` to keep it as an **internal note** (e.g. \`=only tutors see this\`) — it will **not** be sent to the student.`
     ).catch(() => {});
@@ -1726,14 +1799,6 @@ async function registerCommands() {
       options: [{ name: 'subject', description: 'Type the subject name', type: 3, required: true, autocomplete: true }]
     },
     {
-      name: 'reply',
-      description: 'Reply to a student, format: /reply CODE message',
-      options: [
-        { name: 'code', description: 'Ticket code to reply to', type: 3, required: true },
-        { name: 'message', description: 'Your reply to the student', type: 3, required: true }
-      ]
-    },
-    {
       name: 'close',
       description: 'Close a ticket (staff only), opens a flow to capture reason and assignment',
       options: [
@@ -1764,46 +1829,41 @@ async function registerCommands() {
       name: 'tutor',
       description: 'Manage tutors or view info',
       options: [
-        { name: 'action', description: 'add, remove, list, info, or notes', type: 3, required: true, choices: [{ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }, { name: 'list', value: 'list' }, { name: 'info', value: 'info' }, { name: 'notes', value: 'notes' }] },
-        { name: 'user', description: 'Mention or select the tutor user (e.g. @username)', type: 6, required: false },
-        { name: 'subject', description: 'Subject for mapping (autocomplete shows subjects with tutors)', type: 3, required: false, autocomplete: true }
+        { name: 'add', description: 'Assign a tutor to a subject', type: 1, options: [
+          { name: 'user', description: 'Mention or select the tutor user (e.g. @username)', type: 6, required: false },
+          { name: 'subject', description: 'Subject for mapping (autocomplete shows subjects with tutors)', type: 3, required: false, autocomplete: true }
+        ] },
+        { name: 'remove', description: 'Remove a tutor from a subject', type: 1, options: [
+          { name: 'user', description: 'Mention or select the tutor user (e.g. @username)', type: 6, required: false },
+          { name: 'subject', description: 'Subject for mapping (autocomplete shows subjects with tutors)', type: 3, required: false, autocomplete: true }
+        ] },
+        { name: 'list', description: 'List tutors or tutor assignments', type: 1, options: [
+          { name: 'subject', description: 'Filter by subject', type: 3, required: false, autocomplete: true }
+        ] },
+        { name: 'info', description: 'View a tutor profile', type: 1, options: [
+          { name: 'user', description: 'Mention or select the tutor user (e.g. @username)', type: 6, required: false }
+        ] },
+        { name: 'notes', description: 'Edit tutor notes', type: 1, options: [
+          { name: 'user', description: 'Mention or select the tutor user (e.g. @username)', type: 6, required: false }
+        ] },
+        { name: 'edit', description: 'Edit tutor contact info', type: 1, options: [
+          { name: 'user', description: 'Mention or select the tutor user (e.g. @username)', type: 6, required: false }
+        ] }
       ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
     {
-      name: 'tutoredit',
-      description: "Edit a tutor's phone number or date of birth",
+      name: 'ad',
+      description: 'Create, edit, or delete tutor ads',
       options: [
-        { name: 'user', description: 'The tutor to edit (leave blank to select from a list)', type: 6, required: false }
-      ],
-      default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
-    },
-    {
-      name: 'createad',
-      description: 'Create an ad in #find-a-tutor, modal supports optional color and tutor assignment',
-      default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
-    },
-    {
-      name: 'editad',
-      description: 'Edit an existing ad by message id, preloads content',
-      options: [{ name: 'messageid', description: 'Message id of the ad to edit', type: 3, required: true }],
-      default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
-    },
-    {
-      name: 'keyword',
-      description: 'Set a server-wide trigger keyword and auto-response',
-      options: [
-        { name: 'keyword', description: 'The word or phrase to watch for', type: 3, required: true },
-        { name: 'response', description: 'The bot response to post when triggered', type: 3, required: true }
-      ],
-      default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
-    },
-    {
-      name: 'deletead',
-      description: 'Delete an ad and archive it to the staff archive channel',
-      options: [
-        { name: 'messageid', description: 'Message id of the ad to delete (from find-a-tutor)', type: 3, required: true },
-        { name: 'reason', description: 'Reason for deleting the ad (sent to tutor/students)', type: 3, required: false }
+        { name: 'create', description: 'Create a tutor ad', type: 1 },
+        { name: 'edit', description: 'Edit an existing tutor ad', type: 1, options: [
+          { name: 'messageid', description: 'Message id of the ad to edit', type: 3, required: true }
+        ] },
+        { name: 'delete', description: 'Delete an ad and archive it', type: 1, options: [
+          { name: 'messageid', description: 'Message id of the ad to delete (from find-a-tutor)', type: 3, required: true },
+          { name: 'reason', description: 'Reason for deleting the ad (sent to tutor/students)', type: 3, required: false }
+        ] }
       ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
@@ -1823,12 +1883,34 @@ async function registerCommands() {
     { name: 'staffhelp', description: 'Show staff commands', default_member_permissions: PermissionFlagsBits.ManageMessages.toString() },
     { name: 'bumpleaderboard', description: 'Show the bump leaderboard - see who has bumped the server the most!' },
     // student & review commands
-    { name: 'student', description: 'Manage student assignments by selecting the student and tutor users', options: [
-        { name: 'action', type: 3, required: true, description: 'Add or remove a student from a tutor', choices: [{ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }] },
-        { name: 'student', type: 6, required: true, description: 'Student user' },
-        { name: 'tutor', type: 6, required: true, description: 'Tutor user' },
-        { name: 'subject', type: 3, required: false, description: 'Subject (optional)' }
+    { name: 'student', description: 'Manage student assignments', options: [
+        { name: 'add', description: 'Add a student to a tutor', type: 1, options: [
+          { name: 'student', type: 6, required: true, description: 'Student user' },
+          { name: 'tutor', type: 6, required: true, description: 'Tutor user' },
+          { name: 'subject', type: 3, required: false, description: 'Subject (optional)', autocomplete: true }
+        ] },
+        { name: 'remove', description: 'Remove a student from a tutor', type: 1, options: [
+          { name: 'student', type: 6, required: true, description: 'Student user' },
+          { name: 'tutor', type: 6, required: true, description: 'Tutor user' },
+          { name: 'subject', type: 3, required: false, description: 'Subject (optional)', autocomplete: true }
+        ] },
+        { name: 'list', description: 'List student assignments', type: 1, options: [
+          { name: 'tutor', type: 6, required: false, description: 'Filter by tutor' },
+          { name: 'subject', type: 3, required: false, description: 'Filter by subject', autocomplete: true }
+        ] }
       ], default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
+    },
+    { name: 'keyword', description: 'Manage keyword auto-responses', options: [
+        { name: 'set', description: 'Add or update a keyword response', type: 1, options: [
+          { name: 'keyword', description: 'The word or phrase to watch for', type: 3, required: true },
+          { name: 'response', description: 'The bot response to post when triggered', type: 3, required: true }
+        ] },
+        { name: 'list', description: 'View all keyword responses', type: 1 },
+        { name: 'remove', description: 'Remove a keyword response', type: 1, options: [
+          { name: 'keyword', description: 'The keyword to remove', type: 3, required: true }
+        ] }
+      ],
+      default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
     { name: 'reviewreminder', description: 'Set review reminder delay in seconds', options: [
         { name: 'seconds', type: 3, required: true, description: 'Number of seconds to wait before sending review reminder' }
@@ -1855,15 +1937,6 @@ async function registerCommands() {
       ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
-    {
-      name: 'migrateads',
-      description: 'Re-post all existing ads into their category channels with a short version (staff only)',
-      options: [
-        { name: 'force', description: 'Re-post even if a category message already exists', type: 5, required: false }
-      ],
-      default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
-    },
-    { name: 'exportchannels', description: 'Export all guild categories and channels as JSON (staff only)', default_member_permissions: PermissionFlagsBits.ManageMessages.toString() },
     {
       name: 'seedsubjects',
       description: 'Seed IGCSE/GCSE and AS/AL subjects from the predefined channel list (staff only, idempotent)',
@@ -1913,7 +1986,7 @@ process.on('uncaughtException', (err) => {
 // --- Interaction handling ---
 // We'll preserve original logic but add the new flows:
 // - /close now starts a select + modal flow so staff can mark whether student hired a tutor, which tutor, subject, reason
-// - /createad modal has optional tutor text field (resolveTutorInput) and thread creation is supported in createad modal submit
+// - /ad create modal has optional tutor text field (resolveTutorInput) and thread creation is supported in ad modal submit
 client.on('interactionCreate', async (interaction) => {
   try {
     // Skip commands handled by demo.js immediately to prevent conflicts
@@ -1936,7 +2009,9 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.isAutocomplete() && interaction.commandName === 'tutor') {
       const focused = interaction.options.getFocused();
-      const action = interaction.options.getString('action');
+      let action = null;
+      try { action = interaction.options.getSubcommand(false); } catch (e) {}
+      if (!action) action = interaction.options.getString('action');
       const userOpt = interaction.options.getUser('user');
       let subjects;
       if ((action === 'remove' || action === 'list') && userOpt) {
@@ -1956,6 +2031,17 @@ client.on('interactionCreate', async (interaction) => {
         .slice(0, 25)
         .map(s => ({ name: s, value: s }));
       await interaction.respond(choices).catch(() => { /* Discord rejects stale autocomplete responses after the user keeps typing. */ });
+      return;
+    }
+
+    if (interaction.isAutocomplete() && interaction.commandName === 'student') {
+      const focused = interaction.options.getFocused();
+      const query = String(focused || '').toLowerCase();
+      const choices = sortStringsCaseInsensitive(db.subjects || [])
+        .filter(subject => !query || subject.toLowerCase().includes(query))
+        .slice(0, 25)
+        .map(subject => ({ name: subject, value: subject }));
+      await interaction.respond(choices).catch(() => {});
       return;
     }
     
@@ -3705,7 +3791,9 @@ client.on('interactionCreate', async (interaction) => {
           } catch (e) {}
 
           const rating = profile.rating && profile.rating.count ? `${(Number(profile.rating.avg) || 0).toFixed(2)} ⭐️ (${profile.rating.count})` : '(no ratings)';
-          const studentList = (profile.students && profile.students.length) ? profile.students.join(', ') : '(none)';
+          const studentList = (profile.students && profile.students.length)
+            ? (await Promise.all(profile.students.map(studentId => formatUserLabel(interaction.guild, studentId)))).join(', ')
+            : '(none)';
           const notes = profile.notes || '(no notes)';
           const phone = profile.phoneNumber || '(not set)';
           const dob = profile.dob || '(not set)';
@@ -4226,58 +4314,193 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
 
-      // REPLY (unchanged)
-      if (cmd === 'reply') {
-        const code = interaction.options.getString('code', true);
-        const messageText = interaction.options.getString('message', true);
+      if (cmd === 'ad' || cmd === 'createad' || cmd === 'editad' || cmd === 'deletead') {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can manage ads.', ephemeral: true }).catch(() => {});
 
-        const ticket = db.tickets[code];
-        if (!ticket) return interaction.reply({ content: `Ticket ${code} not found.`, ephemeral: true }).catch(() => {});
-
-        const is_staff = isStaff(interaction.member);
-        const allowedTutors = new Set(getTicketAllowedTutorIds(ticket));
-        const userIdStr = String(interaction.user.id);
-        const isTutorId = allowedTutors.has(userIdStr);
-
-        if (!is_staff) {
-          if (!ticket.approved) return interaction.reply({ content: 'This enquiry has not been approved yet, only staff can reply before approval.', ephemeral: true }).catch(() => {});
-          if (!isTutorId) {
-            console.warn(`Unauthorized reply attempt: user=${userIdStr}, subject=${ticket.subject}, ticket=${code}`);
-            const denyMsg = ticket.selectedTutorId
-              ? 'Only the tutor assigned to this enquiry or staff can reply.'
-              : 'Only tutors assigned to this subject or staff can reply.';
-            return interaction.reply({ content: denyMsg, ephemeral: true }).catch(() => {});
-          }
+        let adAction = null;
+        try { adAction = interaction.options.getSubcommand(false); } catch (e) {}
+        if (!adAction) {
+          adAction = cmd === 'createad' ? 'create' : cmd === 'editad' ? 'edit' : cmd === 'deletead' ? 'delete' : null;
         }
 
-        ticket.tutorMap = ticket.tutorMap || {};
-        ticket.tutorCount = ticket.tutorCount || 0;
-        if (!ticket.tutorMap[userIdStr]) {
-          ticket.tutorCount += 1;
-          ticket.tutorMap[userIdStr] = ticket.tutorCount;
+        if (adAction === 'create') {
+          // Acknowledge and fetch usernames into DB (may take time). We reply first to avoid "application did not respond".
+          try {
+            await interaction.reply({ content: 'Preparing ad modal and resolving tutor usernames, please wait...', ephemeral: true });
+          } catch (e) { /* ignore */ }
+
+          const allTutorIds = Array.from(new Set(Object.values(db.subjectTutors || {}).flat()));
+          const fetchPromises = allTutorIds.map(async (tid) => {
+            try {
+              if (!tid) return;
+              db.tutorProfiles = db.tutorProfiles || {};
+              db.tutorProfiles[tid] = db.tutorProfiles[tid] || { addedAt: null, students: [], reviews: [], rating: { count: 0, avg: 0 }, notes: '' };
+              if (db.tutorProfiles[tid].username) return;
+              const member = await interaction.guild.members.fetch(tid).catch(() => null);
+              if (member && member.user) {
+                db.tutorProfiles[tid].username = member.user.username;
+                db.tutorProfiles[tid].tag = member.user.tag;
+                return;
+              }
+              const user = await client.users.fetch(tid).catch(() => null);
+              if (user) {
+                db.tutorProfiles[tid].username = user.username;
+                db.tutorProfiles[tid].tag = user.tag;
+              }
+            } catch (e) { /* ignore per-user failures */ }
+          });
+
+          try {
+            await Promise.allSettled(fetchPromises);
+            saveDB();
+          } catch (e) { /* ignore */ }
+
+          await interaction.followUp({
+            content: 'Ready - select the subject level category, then click **Open ad form** and type the subject name.',
+            components: buildCreateAdLevelFlowRows(interaction.user.id),
+            ephemeral: true
+          }).catch(() => {});
+          return;
         }
-        const tutorLabel = `Tutor ${ticket.tutorMap[userIdStr]}`;
 
-        const guild = interaction.guild;
-        const ticketChannel = await guild.channels.fetch(ticket.ticketChannelId).catch(() => null);
-        if (!ticketChannel) return interaction.reply({ content: 'Ticket channel not found.', ephemeral: true }).catch(() => {});
+        if (adAction === 'edit') {
+          const messageId = interaction.options.getString('messageid', true);
 
-        try { await ticketChannel.send(`Reply from ${tutorLabel}: ${messageText}`).catch(() => {}); } catch (e) { console.warn('Failed send anon reply', e); try { notifyStaffError(e, 'reply send anon', interaction); } catch (err) {} }
+          let adData = null;
+          let foundInFindChannel = false;
+          let foundInCategoryChannel = false;
 
-        ticket.messages = ticket.messages || [];
-        ticket.messages.push({ who: tutorLabel, tutorId: userIdStr, at: Date.now(), text: messageText });
-        saveDB();
-
-        try {
-          if (ticket.tutorThreadId) {
-            const thread = await guild.channels.fetch(ticket.tutorThreadId).catch(() => null);
-            if (thread && thread.isThread()) {
-              await thread.send({ content: `Reply for ${code} from ${interaction.user.tag} (${tutorLabel}): ${messageText}` }).catch(() => {});
+          const findChannel = await interaction.guild.channels.fetch(FIND_A_TUTOR_CHANNEL_ID).catch(() => null);
+          let msg = null;
+          if (findChannel) {
+            msg = await findChannel.messages.fetch(messageId).catch(() => null);
+            if (msg) {
+              foundInFindChannel = true;
+              adData = db.createAds[messageId];
             }
           }
-        } catch (e) { console.warn('Failed to post in tutors thread', e); try { notifyStaffError(e, 'reply post to thread', interaction); } catch (err) {} }
 
-        return interaction.reply({ content: `Reply sent to ticket ${code}.`, ephemeral: true }).catch(() => {});
+          if (!msg) {
+            let matchedAdData = null;
+            for (const [msgId, data] of Object.entries(db.createAds || {})) {
+              if (data.categoryMessageId === messageId) {
+                matchedAdData = data;
+                break;
+              }
+            }
+
+            if (matchedAdData && matchedAdData.categoryChannelId) {
+              const categoryCh = await interaction.guild.channels.fetch(matchedAdData.categoryChannelId).catch(() => null);
+              if (categoryCh) {
+                const categoryMsg = await categoryCh.messages.fetch(messageId).catch(() => null);
+                if (categoryMsg) {
+                  msg = categoryMsg;
+                  foundInCategoryChannel = true;
+                  adData = matchedAdData;
+                }
+              }
+            }
+          }
+
+          if (!msg) return interaction.reply({ content: `Message ${messageId} not found in find-a-tutor or any category channel.`, ephemeral: true }).catch(() => {});
+
+          if ((db.subjects || []).length === 0) {
+            return interaction.reply({ content: 'No subjects available. Please add subjects first using /subject add', ephemeral: true }).catch(() => {});
+          }
+
+          const choiceRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`editad_choice|${messageId}|${foundInCategoryChannel ? 'category' : 'find'}|short`).setLabel('Edit short version').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId(`editad_choice|${messageId}|${foundInCategoryChannel ? 'category' : 'find'}|full`).setLabel('Edit full detailed ad').setStyle(ButtonStyle.Secondary)
+          );
+
+          return interaction.reply({
+            content: 'Which version do you want to edit?',
+            components: [choiceRow],
+            ephemeral: true
+          }).catch(() => {});
+        }
+
+        if (adAction === 'delete') {
+          const messageId = interaction.options.getString('messageid', true);
+          const reason = interaction.options.getString('reason', false) || 'Ad removed by staff.';
+          await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
+          let adData = db.createAds[messageId] || null;
+          let findMessageId = messageId;
+          let categoryMsgId = null;
+
+          if (!adData) {
+            for (const [msgId, data] of Object.entries(db.createAds || {})) {
+              if (data && data.categoryMessageId === messageId) {
+                adData = data;
+                findMessageId = msgId;
+                categoryMsgId = messageId;
+                break;
+              }
+            }
+          } else {
+            categoryMsgId = adData.categoryMessageId || null;
+          }
+
+          if (!adData) return interaction.editReply({ content: `No ad found with message ID \`${messageId}\` in the database.` }).catch(() => {});
+
+          const findChannel = await interaction.guild.channels.fetch(FIND_A_TUTOR_CHANNEL_ID).catch(() => null);
+          let findMsg = null;
+          if (findChannel) findMsg = await findChannel.messages.fetch(findMessageId).catch(() => null);
+
+          let categoryMsg = null;
+          if (adData.categoryChannelId && categoryMsgId) {
+            const categoryCh = await interaction.guild.channels.fetch(adData.categoryChannelId).catch(() => null);
+            if (categoryCh) categoryMsg = await categoryCh.messages.fetch(categoryMsgId).catch(() => null);
+          }
+
+          if (ARCHIVED_ADS_CHANNEL_ID) {
+            try {
+              const archiveCh = await interaction.guild.channels.fetch(ARCHIVED_ADS_CHANNEL_ID).catch(() => null);
+              if (archiveCh) {
+                const { embed: archiveEmbed, overflowMessages } = buildArchiveEmbed(adData, findMessageId, reason, interaction.user.id);
+                archiveEmbed.addFields({ name: 'Archived By', value: `<@${interaction.user.id}>` });
+                await archiveCh.send({ embeds: [archiveEmbed] }).catch(e => console.warn('deletead: archive post failed', e));
+                for (const message of overflowMessages) {
+                  await archiveCh.send({ content: message }).catch(e => console.warn('deletead: archive overflow post failed', e));
+                }
+              }
+            } catch (e) { console.warn('deletead: failed to post to archive channel', e); }
+          }
+
+          if (adData.tutorId) {
+            try {
+              const tutorUser = await client.users.fetch(adData.tutorId).catch(() => null);
+              if (tutorUser) {
+                const subject = adData.embed?.title || 'your subject';
+                await tutorUser.send(`Your ad for **${subject}** has been removed by staff.\nReason: ${reason}`).catch(() => {});
+              }
+            } catch (e) { console.warn('deletead: failed to DM tutor', e); }
+          }
+
+          const assignedStudents = getStudentsAssignedToTutor(adData.tutorId);
+          for (const studentId of assignedStudents) {
+            try {
+              const studentUser = await client.users.fetch(studentId).catch(() => null);
+              if (studentUser) {
+                const subject = adData.embed?.title || 'a subject';
+                await studentUser.send(`The ad for **${subject}** has been closed. If you need further assistance, please contact staff.`).catch(() => {});
+              }
+            } catch (e) { console.warn('deletead: failed to DM student', e); }
+          }
+
+          if (findMsg) await findMsg.delete().catch(e => console.warn('deletead: find-a-tutor delete failed', e));
+          if (categoryMsg) await categoryMsg.delete().catch(e => console.warn('deletead: category delete failed', e));
+
+          if (!db.archivedAds) db.archivedAds = {};
+          db.archivedAds[findMessageId] = { ...adData, archivedAt: Date.now(), archivedBy: interaction.user.id, reason };
+          delete db.createAds[findMessageId];
+          saveDB();
+
+          return interaction.editReply({ content: `Ad deleted and archived.${ARCHIVED_ADS_CHANNEL_ID ? ` Check <#${ARCHIVED_ADS_CHANNEL_ID}>.` : ''}` }).catch(() => {});
+        }
+
+        return interaction.reply({ content: 'Unknown ad action.', ephemeral: true }).catch(() => {});
       }
 
 // CLOSE command changed: send an ephemeral message with select menus and a button to open modal for reason
@@ -4401,7 +4624,9 @@ if (cmd === 'close') {
 
       // tutor command extended to show students and reviews
       if (cmd === 'tutor') {
-        const action = interaction.options.getString('action', true);
+        let action = null;
+        try { action = interaction.options.getSubcommand(false); } catch (e) {}
+        if (!action) action = interaction.options.getString('action', false);
         const userOpt = interaction.options.getUser('user', false);
         const useridRaw = userOpt ? userOpt.id : null;
         const subj = interaction.options.getString('subject', false);
@@ -4442,7 +4667,9 @@ if (cmd === 'close') {
             }
           } catch (e) {}
           const rating = profile.rating && profile.rating.count ? `${(Number(profile.rating.avg) || 0).toFixed(2)} ⭐️ (${profile.rating.count})` : '(no ratings)';
-          const studentList = (profile.students && profile.students.length) ? profile.students.join(', ') : '(none)';
+          const studentList = (profile.students && profile.students.length)
+            ? (await Promise.all(profile.students.map(studentId => formatUserLabel(interaction.guild, studentId)))).join(', ')
+            : '(none)';
           const notes = profile.notes || '(no notes)';
           const phone = profile.phoneNumber || '(not set)';
           const dob = profile.dob || '(not set)';
@@ -4543,6 +4770,38 @@ if (cmd === 'close') {
             }
             return;
           }
+        }
+
+        if (action === 'edit') {
+          if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit tutor info.', ephemeral: true }).catch(() => {});
+          if (!useridRaw) {
+            const allTutorIds = getAllTutorIds();
+            if (allTutorIds.length === 0) return interaction.reply({ content: 'No tutors in database.', ephemeral: true }).catch(() => {});
+            const options = await buildTutorSelectOptions(interaction.guild, allTutorIds);
+            const select = buildPaginatedSelectMenu({ baseCustomId: 'tutor_select|edit', placeholder: 'Select a tutor to edit contact info', options });
+            return interaction.reply({ content: 'Select a tutor to edit their phone number and date of birth:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
+          }
+
+          const userid = String(useridRaw);
+          db.tutorProfiles[userid] = db.tutorProfiles[userid] || { addedAt: Date.now(), students: [], reviews: [], rating: { count: 0, avg: 0 }, notes: '' };
+          const profile = db.tutorProfiles[userid];
+          const modal = new ModalBuilder()
+            .setCustomId(`tutor_edit_modal|${userid}`)
+            .setTitle('Edit Tutor Contact Info');
+          const phoneInput = new TextInputBuilder()
+            .setCustomId('phone').setLabel('Phone Number').setStyle(TextInputStyle.Short)
+            .setRequired(false).setValue((profile.phoneNumber || '').substring(0, 100)).setPlaceholder('e.g. +1 234 567 890');
+          const dobInput = new TextInputBuilder()
+            .setCustomId('dob').setLabel('Date of Birth').setStyle(TextInputStyle.Short)
+            .setRequired(false).setValue((profile.dob || '').substring(0, 100)).setPlaceholder('e.g. YYYY-MM-DD');
+          modal.addComponents(new ActionRowBuilder().addComponents(phoneInput), new ActionRowBuilder().addComponents(dobInput));
+          try {
+            await interaction.showModal(modal);
+          } catch (err) {
+            console.error('showModal failed for tutor edit', err);
+            return interaction.reply({ content: 'Could not open edit modal, try again.', ephemeral: true }).catch(() => {});
+          }
+          return;
         }
 
         // If removing and no userid was given, present subject+tutor selects when both missing,
@@ -5028,25 +5287,66 @@ if (cmd === 'createad') {
         return interaction.showModal(modal).catch(() => {});
       }
 
-      if (cmd === 'help') return interaction.reply({ content: `Commands:\n/enquire subject:<choice>\n/reply code message\n/help\n/bumpleaderboard`, ephemeral: true }).catch(() => {});
+      if (cmd === 'help') return interaction.reply({ content: `Commands:\n/enquire subject:<choice>\n/ad create|edit|delete\n/tutor info|list\n/student list\n/keyword set|list|remove\n/help\n/bumpleaderboard`, ephemeral: true }).catch(() => {});
 
       if (cmd === 'keyword') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can set keyword responses.', ephemeral: true }).catch(() => {});
+        let action = null;
+        try { action = interaction.options.getSubcommand(false); } catch (e) {}
+        if (!action) action = interaction.options.getString('action', false);
+
+        db.keywordAutomations = normalizeKeywordAutomations(db.keywordAutomations);
+
+        if (action === 'list') {
+          if (!db.keywordAutomations.length) {
+            return interaction.reply({ content: 'No keyword responses are configured.', ephemeral: true }).catch(() => {});
+          }
+
+          const lines = db.keywordAutomations.map((entry, index) => {
+            const responsePreview = entry.response.length > 80 ? `${entry.response.slice(0, 77)}...` : entry.response;
+            return `${index + 1}. **${entry.keyword}** -> ${responsePreview}`;
+          });
+          const chunks = splitMessage(`Keyword responses (${db.keywordAutomations.length}):\n${lines.join('\n')}`, 1900);
+          await interaction.reply({ content: chunks[0], ephemeral: true }).catch(() => {});
+          for (let i = 1; i < chunks.length; i++) {
+            await interaction.followUp({ content: chunks[i], ephemeral: true }).catch(() => {});
+          }
+          return;
+        }
+
+        if (action === 'remove') {
+          const keyword = String(interaction.options.getString('keyword', true) || '').trim();
+          if (!keyword) return interaction.reply({ content: 'Please provide a keyword to remove.', ephemeral: true }).catch(() => {});
+
+          const before = db.keywordAutomations.length;
+          db.keywordAutomations = db.keywordAutomations.filter(entry => String(entry.keyword || '').toLowerCase() !== keyword.toLowerCase());
+          if (db.keywordAutomations.length === before) {
+            return interaction.reply({ content: `No keyword response matched **${keyword}**.`, ephemeral: true }).catch(() => {});
+          }
+
+          saveDB();
+          return interaction.reply({ content: `Removed keyword response for **${keyword}**.`, ephemeral: true }).catch(() => {});
+        }
+
         const keyword = String(interaction.options.getString('keyword', true) || '').trim();
         const response = String(interaction.options.getString('response', true) || '').trim();
         if (!keyword) return interaction.reply({ content: 'Please provide a keyword to watch for.', ephemeral: true }).catch(() => {});
         if (!response) return interaction.reply({ content: 'Please provide a response message.', ephemeral: true }).catch(() => {});
 
-        db.keywordTrigger = keyword.substring(0, 100);
-        db.keywordResponse = response.substring(0, 2000);
+        const normalizedKeyword = keyword.substring(0, 100);
+        const normalizedResponse = response.substring(0, 2000);
+        const existingIndex = db.keywordAutomations.findIndex(entry => String(entry.keyword || '').toLowerCase() === normalizedKeyword.toLowerCase());
+        const entry = { keyword: normalizedKeyword, response: normalizedResponse, createdAt: Date.now(), createdBy: interaction.user.id };
+        if (existingIndex >= 0) db.keywordAutomations[existingIndex] = entry;
+        else db.keywordAutomations.push(entry);
         saveDB();
 
-        return interaction.reply({ content: `Keyword trigger set to **${db.keywordTrigger}**. The bot will now respond when it appears in a message.`, ephemeral: true }).catch(() => {});
+        return interaction.reply({ content: `Keyword trigger set to **${normalizedKeyword}**. The bot will now respond when it appears in a message.`, ephemeral: true }).catch(() => {});
       }
 
       if (cmd === 'staffhelp') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can access this.', ephemeral: true }).catch(() => {});
-        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list [level] [tutor-assigned:yes/no/all]\n/tutor add/remove/list/info [user:@mention]\n/createad\n/editad\n/keyword\n/deletead\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove [student:tutor user pickers]\n/modmailmap [purpose/category]\n/reviewreminder\n/migrateads [force:true]`, ephemeral: true }).catch(() => {});
+        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list [level] [tutor-assigned:yes/no/all]\n/tutor add/remove/list/info/notes/edit [user:@mention]\n/ad create|edit|delete\n/keyword set|list|remove\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove/list [filters]\n/modmailmap [purpose/category]\n/reviewreminder\n/seedsubjects`, ephemeral: true }).catch(() => {});
       }
 
       // bumpleaderboard command
@@ -5093,12 +5393,60 @@ if (cmd === 'createad') {
       // STUDENT command: add/remove
       if (cmd === 'student') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can manage students.', ephemeral: true }).catch(() => {});
-        const action = interaction.options.getString('action', true);
+        let action = null;
+        try { action = interaction.options.getSubcommand(false); } catch (e) {}
+        if (!action) action = interaction.options.getString('action', false);
         const studentUser = interaction.options.getUser('student', false);
         const tutorUser = interaction.options.getUser('tutor', false);
+        const subject = interaction.options.getString('subject', false) || '(unspecified)';
+
+        if (action === 'list') {
+          const tutorFilter = tutorUser?.id || null;
+          const subjectFilter = interaction.options.getString('subject', false) || null;
+          const assignments = Object.entries(db.studentAssignments || {})
+            .filter(([, asg]) => {
+              if (!asg) return false;
+              if (tutorFilter && String(asg.tutorId) !== String(tutorFilter)) return false;
+              if (subjectFilter && String(asg.subject || '') !== String(subjectFilter)) return false;
+              return true;
+            })
+            .sort((a, b) => {
+              const aSubj = String(a[1]?.subject || '').toLowerCase();
+              const bSubj = String(b[1]?.subject || '').toLowerCase();
+              if (aSubj !== bSubj) return aSubj.localeCompare(bSubj);
+              return String(a[0]).localeCompare(String(b[0]));
+            });
+
+          if (assignments.length === 0) {
+            const filters = [
+              tutorFilter ? `tutor ${await formatUserLabel(interaction.guild, tutorFilter)}` : null,
+              subjectFilter ? `subject ${subjectFilter}` : null
+            ].filter(Boolean).join(', ');
+            return interaction.reply({ content: `No student assignments found${filters ? ` for ${filters}` : ''}.`, ephemeral: true }).catch(() => {});
+          }
+
+          const lines = [];
+          for (const [studentId, asg] of assignments) {
+            const studentLabel = await formatUserLabel(interaction.guild, studentId);
+            const tutorLabel = await formatUserLabel(interaction.guild, asg.tutorId);
+            const assignedAt = asg.assignedAt ? `<t:${Math.floor(asg.assignedAt / 1000)}:f>` : '(unknown)';
+            lines.push(`${studentLabel} -> ${tutorLabel} [${asg.subject || '(unspecified)'}]${assignedAt ? ` since ${assignedAt}` : ''}`);
+          }
+
+          const filters = [
+            tutorFilter ? `tutor ${await formatUserLabel(interaction.guild, tutorFilter)}` : null,
+            subjectFilter ? `subject ${subjectFilter}` : null
+          ].filter(Boolean).join(', ');
+          const chunks = splitMessage(`Student assignments (${lines.length})${filters ? ` [${filters}]` : ''}:\n${lines.join('\n')}`, 1900);
+          await interaction.reply({ content: chunks[0], ephemeral: true }).catch(() => {});
+          for (let i = 1; i < chunks.length; i++) {
+            await interaction.followUp({ content: chunks[i], ephemeral: true }).catch(() => {});
+          }
+          return;
+        }
+
         const studentId = studentUser?.id || resolveDiscordUserInput(interaction.options.getString('studentid', false)).userId;
         const tutorId = tutorUser?.id || resolveDiscordUserInput(interaction.options.getString('tutorid', false)).userId;
-        const subject = interaction.options.getString('subject', false) || '(unspecified)';
 
         if (!studentId || !tutorId) {
           return interaction.reply({ content: 'Please choose both a student and a tutor from the Discord pickers.', ephemeral: true }).catch(() => {});
@@ -5114,13 +5462,14 @@ if (cmd === 'createad') {
           db.studentAssignments[studentId] = { tutorId, subject, assignedAt: Date.now(), reviewScheduledAt: Date.now() + (db.reviewConfig.delaySeconds || 1296000)*1000 };
           saveDB();
           return interaction.reply({ content: `Student ${studentLabel} assigned to tutor ${tutorLabel} for ${subject}`, ephemeral: true }).catch(() => {});
-        } else {
-          // remove
+        } else if (action === 'remove') {
           if (db.tutorProfiles[tutorId] && db.tutorProfiles[tutorId].students) db.tutorProfiles[tutorId].students = db.tutorProfiles[tutorId].students.filter(s => s !== studentId);
           if (db.studentAssignments[studentId] && db.studentAssignments[studentId].tutorId === tutorId) delete db.studentAssignments[studentId];
           saveDB();
           return interaction.reply({ content: `Student ${studentLabel} removed from tutor ${tutorLabel}`, ephemeral: true }).catch(() => {});
         }
+
+        return interaction.reply({ content: 'Unknown student action.', ephemeral: true }).catch(() => {});
       }
 
       // reviewreminder - simple setter
@@ -5528,10 +5877,14 @@ client.on('messageCreate', async (message) => {
     
     if (message.author?.bot) return;
 
-    const keywordTrigger = String(db.keywordTrigger || '').trim();
-    const keywordResponse = String(db.keywordResponse || '').trim();
-    if (keywordTrigger && keywordResponse && messageContainsTrigger(message.content || '', keywordTrigger)) {
-      await message.channel.send({ content: keywordResponse.substring(0, 2000) }).catch(() => {});
+    const keywordAutomations = normalizeKeywordAutomations(db.keywordAutomations);
+    if (keywordAutomations.length > 0) {
+      for (const automation of keywordAutomations) {
+        if (messageContainsTrigger(message.content || '', automation.keyword)) {
+          await message.channel.send({ content: automation.response.substring(0, 2000) }).catch(() => {});
+          break;
+        }
+      }
     }
 
     // sticky: if any message posted in find-a-tutor, repost sticky immediately (no staff ping)
