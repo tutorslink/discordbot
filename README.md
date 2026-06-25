@@ -9,7 +9,6 @@ Isofusie is a feature-rich Discord bot built for managing a tutoring community s
 ### 🎓 Enquiry & Ticket System
 - Students create enquiry tickets for a chosen subject via `/enquire`
 - Tickets are opened inside a dedicated category with a customisable initial message
-- Staff reply to tickets with `/reply <code> <message>`
 - Staff close tickets with `/close <code>`, specifying a reason and assigning a tutor
 - Closed tickets generate a transcript posted to a configurable transcripts channel
 - A review reminder is automatically sent to the student after a configurable delay
@@ -29,12 +28,11 @@ Isofusie is a feature-rich Discord bot built for managing a tutoring community s
 - Closing a ticket triggers a modal to collect a closure reason and posts a full transcript
 
 ### 📢 Tutor Advertisement Management
-- Create rich-embed tutor ads with `/createad` (select level category, then type subject and optional tutor in the ad form modal)
-- Edit existing ads with `/editad <messageId>` (modal pre-filled with current values)
-- Delete and archive ads with `/deletead <messageId> <reason>`
+- Create rich-embed tutor ads with `/ad create` (select level category, then type subject and optional tutor in the ad form modal)
+- Edit existing ads with `/ad edit <messageId>` (modal pre-filled with current values)
+- Delete and archive ads with `/ad delete <messageId> <reason>`
 - Ads are automatically organised into level-based category channels:
   - IGCSE Tutors, AS/A Level Tutors, Below IGCSE Tutors, University Tutors, Language Tutors, Test Prep Tutors, Other Tutors
-- Migrate existing ads to category channels with `/migrateads`
 - "Talk to Tutor" button on each ad opens an enquiry ticket for that ad's tutor and subject
 
 ### ⭐ Review System
@@ -47,10 +45,10 @@ Isofusie is a feature-rich Discord bot built for managing a tutoring community s
 
 ### 👩‍🏫 Tutor Management
 - Add or remove tutors with `/tutor add|remove <user>`
-- Assign subjects to tutors and list tutor subjects with `/tutor subject`
+- Assign subjects to tutors and list tutor subjects with `/tutor add|remove|list`
 - View a tutor's full profile (subjects, students, reviews, notes) with `/tutor info`
 - Add internal notes to a tutor's record with `/tutor notes`
-- Edit tutor profile fields (phone number, date of birth) with `/tutoredit`
+- Edit tutor profile fields (phone number, date of birth) with `/tutor edit`
 
 ### 📚 Subject Management
 - Add, remove, and list subjects with `/subject add|remove|list`
@@ -61,7 +59,7 @@ Isofusie is a feature-rich Discord bot built for managing a tutoring community s
 ### 🧑‍🎓 Student Assignment
 - Assign students to a tutor with `/student add` using Discord user pickers for both the student and tutor
 - Remove student assignments with `/student remove` using the same picker-based flow
-- List student assignments with `/student list`, with buttons to cycle filters and sorting
+- List student assignments with `/student list`, with optional tutor and subject filters
 - Student assignment data is stored per tutor and visible in their profile
 
 ### 🎙️ Voice Recording (Demo Sessions)
@@ -89,7 +87,7 @@ Isofusie is a feature-rich Discord bot built for managing a tutoring community s
 - `/embedcolor <hex>` — Set the default embed accent colour for the bot
 - `/editinit` — Edit the initial message shown when a ticket is opened (modal-based)
 - `/reviewreminder <seconds>` — Configure the delay before a review prompt is sent after ticket closure
-- `/exportchannels` — Export all guild categories and channels as a JSON snapshot
+- `/keyword set|list|remove` — Manage server-wide trigger keyword responses
 - `/staffhelp` — Display the full list of staff-only commands
 - `/help` — Display user-facing commands
 
