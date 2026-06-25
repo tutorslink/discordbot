@@ -498,7 +498,7 @@ function buildCreateAdShortDescription({ price = '', price1on1 = '', timezone = 
   if (timezone) message += `**Timezone:** ${timezone}\n`;
   if (languages) message += `**Languages:** ${languages}\n`;
   if (message) message += '\n';
-  message += `Click "View Full Details" below for more information, or "Talk to Tutor" to start a conversation.`;
+  message += `Click "View Full Details" below for more information, or "Talk to Tutors!" to start a conversation.`;
   return message;
 }
 
@@ -758,38 +758,6 @@ function normalizeCreateAdLevelKey(raw) {
   return null;
 }
 
-function buildCreateAdLevelSelectOptions(selectedLevelKey = null) {
-  return [
-    new StringSelectMenuOptionBuilder().setLabel('University').setValue('university'),
-    new StringSelectMenuOptionBuilder().setLabel('A level').setValue('a_level'),
-    new StringSelectMenuOptionBuilder().setLabel('IGCSE').setValue('igcse'),
-    new StringSelectMenuOptionBuilder().setLabel('Below IGCSE').setValue('below_igcse'),
-    new StringSelectMenuOptionBuilder().setLabel('Language').setValue('language'),
-    new StringSelectMenuOptionBuilder().setLabel('Test Prep').setValue('test_prep'),
-    new StringSelectMenuOptionBuilder().setLabel('Other').setValue('other')
-  ].map(opt => {
-    try { if (selectedLevelKey && opt.data?.value === selectedLevelKey) opt.setDefault(true); } catch (e) {}
-    return opt;
-  });
-}
-
-function buildCreateAdLevelFlowRows(requester, { selectedLevelKey = null } = {}) {
-  const levelSelect = new StringSelectMenuBuilder()
-    .setCustomId(`createad_level|${requester}`)
-    .setPlaceholder('Select subject level category')
-    .addOptions(buildCreateAdLevelSelectOptions(selectedLevelKey))
-    .setRequired(true);
-  const rows = [new ActionRowBuilder().addComponents(levelSelect)];
-  if (selectedLevelKey) {
-    const btn = new ButtonBuilder()
-      .setCustomId(`open_createad_modal|${requester}|||${selectedLevelKey}`)
-      .setLabel('Open ad form')
-      .setStyle(ButtonStyle.Primary);
-    rows.push(new ActionRowBuilder().addComponents(btn));
-  }
-  return rows;
-}
-
 // Short prefix used in ad codes for each level (e.g. "IG-1", "AL-2")
 const AD_CODE_PREFIXES = {
   igcse:       'IG',
@@ -836,52 +804,6 @@ function resolveAdCodeToTutorId(code) {
 function isAdCode(value) {
   const knownPrefixes = Object.values(AD_CODE_PREFIXES).join('|');
   return new RegExp(`^(?:${knownPrefixes})-\\d+$`, 'i').test(String(value || '').trim());
-}
-
-const AD_ENQUIRE_LABEL = 'Talk to Tutor';
-
-/** Prefer adCode; fall back to find-a-tutor message ID. */
-function buildAdEnquireCustomId(subject, { adCode, messageId } = {}) {
-  const identifier = (adCode && String(adCode).trim()) || (messageId && String(messageId).trim()) || '';
-  return identifier ? `ad_enquire|${subject}|${identifier}` : `ad_enquire|${subject}`;
-}
-
-function buildAdEnquireButton(subject, { adCode, messageId } = {}) {
-  return new ButtonBuilder()
-    .setCustomId(buildAdEnquireCustomId(subject, { adCode, messageId }))
-    .setLabel(AD_ENQUIRE_LABEL)
-    .setStyle(ButtonStyle.Success);
-}
-
-function findCreateAdMessageId(adData) {
-  if (!adData || !db.createAds) return null;
-  for (const [msgId, data] of Object.entries(db.createAds)) {
-    if (data === adData) return msgId;
-  }
-  return null;
-}
-
-function resolveSelectedTutorFromAdIdentifier(identifier) {
-  if (!identifier) return null;
-  const id = String(identifier).trim();
-  if (!id) return null;
-  try {
-    if (/^\d+$/.test(id) && db.createAds) {
-      if (db.createAds[id]?.tutorId) return db.createAds[id].tutorId;
-      for (const data of Object.values(db.createAds)) {
-        if (data.categoryMessageId === id && data.tutorId) return data.tutorId;
-      }
-    }
-    if (isAdCode(id)) return resolveAdCodeToTutorId(id);
-  } catch (e) {
-    console.warn('resolveSelectedTutorFromAdIdentifier failed', e);
-  }
-  return null;
-}
-
-function getTicketAllowedTutorIds(ticket) {
-  if (ticket.selectedTutorId) return [String(ticket.selectedTutorId)];
-  return (db.subjectTutors[ticket.subject] || []).map(tid => String(tid));
 }
 
 /**
@@ -2136,8 +2058,9 @@ client.on('interactionCreate', async (interaction) => {
           try { detailsEmbed.setColor(adData.embed.color); } catch (e) {}
         }
         
+        // Create button row with Talk to Tutors button for ephemeral message
         const detailsRow = new ActionRowBuilder().addComponents(
-          buildAdEnquireButton(subject, { adCode: adData.adCode, messageId: findCreateAdMessageId(adData) })
+          new ButtonBuilder().setCustomId(`ad_enquire|${subject}|${adData.adCode || ''}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
         );
         
         return interaction.reply({ embeds: [detailsEmbed], components: [detailsRow], ephemeral: true }).catch(() => {});
@@ -2148,7 +2071,18 @@ client.on('interactionCreate', async (interaction) => {
         const parts = custom.split('|');
         const subject = parts[1];
         const identifier = parts[2] || null;
-        const selectedTutorId = resolveSelectedTutorFromAdIdentifier(identifier);
+        // Resolve selected tutor if the button referenced a specific ad
+        let selectedTutorId = null;
+        try {
+          if (identifier) {
+            // If identifier looks like a message id and we have a matching createAds entry
+            if (/^\d+$/.test(identifier) && db.createAds && db.createAds[identifier]) {
+              selectedTutorId = db.createAds[identifier].tutorId || null;
+            } else if (isAdCode(identifier)) {
+              selectedTutorId = resolveAdCodeToTutorId(identifier);
+            }
+          }
+        } catch (e) { console.warn('ad_enquire tutor resolution failed', e); }
         const user = interaction.user;
         const existing = findOpenTicketForUserSubject(user.id, subject);
         if (existing) {
@@ -2345,10 +2279,7 @@ client.on('interactionCreate', async (interaction) => {
           if (!db.tickets[code]) return interaction.reply({ content: `Ticket ${code} not found.`, ephemeral: true }).catch(() => {});
           if (ticket.approved) return interaction.reply({ content: `Ticket ${code} already approved.`, ephemeral: true }).catch(() => {});
 
-          const approvingMsg = ticket.selectedTutorId
-            ? `Approving ticket ${code} and notifying the selected tutor...`
-            : `Approving ticket ${code} and notifying tutors...`;
-          await interaction.reply({ content: approvingMsg, ephemeral: true }).catch(() => {});
+          await interaction.reply({ content: `Approving ticket ${code} and notifying tutors...`, ephemeral: true }).catch(() => {});
           const guild = interaction.guild;
 
           // build firstMessage
@@ -2949,7 +2880,7 @@ client.on('interactionCreate', async (interaction) => {
 
             const row = new ActionRowBuilder().addComponents(
               new ButtonBuilder().setCustomId(`view_full_details|${adCode}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
-              buildAdEnquireButton(subject, { adCode })
+              new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
             );
 
             const findCh = await interaction.guild.channels.fetch(FIND_A_TUTOR_CHANNEL_ID).catch(() => null);
@@ -2990,10 +2921,11 @@ client.on('interactionCreate', async (interaction) => {
                 };
                 saveDB();
 
+                // Update the enquiry button to include the message id so we can map back to this ad
                 try {
                   const updatedRow = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId(`view_full_details|${adCode}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
-                    buildAdEnquireButton(subject, { adCode, messageId: sent.id })
+                    new ButtonBuilder().setCustomId(`ad_enquire|${subject}|${sent.id}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
                   );
                   await sent.edit({ components: [updatedRow] }).catch(() => {});
                   if (categorySent) await categorySent.edit({ components: [updatedRow] }).catch(() => {});
@@ -3716,16 +3648,141 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         const levelLabel = CREATEAD_LEVEL_LABELS[levelKey] || 'Selected';
-        const rows = buildCreateAdLevelFlowRows(requester, { selectedLevelKey: levelKey });
-        const content = `Category selected: **${levelLabel}**. Click **Open ad form** below and type the subject name (and optional tutor).`;
+
+        // Keep the select menu so staff can change their mind
+        const levelOptions = [
+          new StringSelectMenuOptionBuilder().setLabel('University').setValue('university'),
+          new StringSelectMenuOptionBuilder().setLabel('A level').setValue('a_level'),
+          new StringSelectMenuOptionBuilder().setLabel('IGCSE').setValue('igcse'),
+          new StringSelectMenuOptionBuilder().setLabel('Below IGCSE').setValue('below_igcse'),
+          new StringSelectMenuOptionBuilder().setLabel('Language').setValue('language'),
+          new StringSelectMenuOptionBuilder().setLabel('Test Prep').setValue('test_prep'),
+          new StringSelectMenuOptionBuilder().setLabel('Other').setValue('other')
+        ].map(opt => {
+          try { if (opt.data?.value === levelKey) opt.setDefault(true); } catch (e) {}
+          return opt;
+        });
+
+        const levelSelect = new StringSelectMenuBuilder()
+          .setCustomId(`createad_level|${requester}`)
+          .setPlaceholder('Select subject level category')
+          .addOptions(levelOptions)
+          .setRequired(true);
+
+        const subjectOptions = buildSubjectSelectOptions(subjectsForLevel);
+        const subjectSelect = buildPaginatedSelectMenu({
+          baseCustomId: `createad_subject|${requester}|${levelKey}`,
+          placeholder: 'Select subject',
+          options: subjectOptions,
+          page: 0,
+          required: true
+        });
+
+        const rowSelect = new ActionRowBuilder().addComponents(levelSelect);
+        const rowSubject = new ActionRowBuilder().addComponents(subjectSelect);
 
         try {
-          await interaction.update({ content, components: rows });
+          await interaction.update({
+            content: `Category selected: **${levelLabel}**. Now choose a subject.`,
+            components: [rowSelect, rowSubject]
+          });
         } catch (e) {
           try {
-            await interaction.reply({ content, components: rows, ephemeral: true });
+            await interaction.reply({ content: `Category selected: **${levelLabel}**. Now choose a subject.`, components: [rowSelect, rowSubject], ephemeral: true });
           } catch (err) {}
         }
+        return;
+      }
+
+      // CreateAd subject select (after level chosen)
+      if (interaction.customId && interaction.customId.startsWith('createad_subject|')) {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
+        const { baseCustomId, page } = parsePagedCustomId(interaction.customId);
+        const parts = baseCustomId.split('|');
+        const requester = parts[1];
+        const levelKey = parts[2];
+        if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
+          return interaction.reply({ content: 'Only the command invoker or staff may select the subject.', ephemeral: true }).catch(() => {});
+        }
+
+        const chosen = interaction.values && interaction.values[0];
+        if (!chosen) return interaction.reply({ content: 'No subject selected.', ephemeral: true }).catch(() => {});
+
+        if (isPagedNavigationValue(chosen)) {
+          const subjectsForLevel = getSubjectsForLevel(levelKey);
+          const subjectOptions = buildSubjectSelectOptions(subjectsForLevel);
+          const nextPage = getPagedNavigationTarget(page, chosen);
+          const subjectSelect = buildPaginatedSelectMenu({
+            baseCustomId: `createad_subject|${requester}|${levelKey}`,
+            placeholder: 'Select subject',
+            options: subjectOptions,
+            page: nextPage,
+            required: true
+          });
+          const rowSubject = new ActionRowBuilder().addComponents(subjectSelect);
+          const rows = Array.isArray(interaction.message?.components) && interaction.message.components.length > 0
+            ? [interaction.message.components[0], rowSubject]
+            : [rowSubject];
+          return interaction.update({ components: rows }).catch(() => {});
+        }
+
+        const subject = chosen;
+        const tutorIds = getTutorIdsForLevel(levelKey);
+        const tutorOptions = await buildTutorSelectOptions(interaction.guild, tutorIds, {
+          includeNoneOption: true,
+          noneLabel: 'No tutor selected',
+          noneDescription: 'Leave tutor unassigned'
+        });
+        const tutorSelect = buildPaginatedSelectMenu({
+          baseCustomId: `createad_tutor|${requester}|${levelKey}|${encodeURIComponent(subject)}`,
+          placeholder: 'Select tutor',
+          options: tutorOptions,
+          page: 0,
+          required: true
+        });
+        const rowTutor = new ActionRowBuilder().addComponents(tutorSelect);
+        return interaction.update({ content: `Subject selected: **${subject}**. Now select a tutor (or choose no tutor).`, components: [interaction.message.components[0], rowTutor] }).catch(() => {});
+      }
+
+      // CreateAd tutor select (after subject chosen)
+      if (interaction.customId && interaction.customId.startsWith('createad_tutor|')) {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
+        const { baseCustomId, page } = parsePagedCustomId(interaction.customId);
+        const parts = baseCustomId.split('|');
+        const requester = parts[1];
+        const levelKey = parts[2];
+        const subject = decodeURIComponent(parts.slice(3).join('|'));
+        if (String(interaction.user.id) !== String(requester) && !isStaff(interaction.member)) {
+          return interaction.reply({ content: 'Only the command invoker or staff may select the tutor.', ephemeral: true }).catch(() => {});
+        }
+
+        const chosen = interaction.values && interaction.values[0];
+        if (!chosen) return interaction.reply({ content: 'No tutor selected.', ephemeral: true }).catch(() => {});
+
+        if (isPagedNavigationValue(chosen)) {
+          const tutorIds = getTutorIdsForLevel(levelKey);
+          const tutorOptions = await buildTutorSelectOptions(interaction.guild, tutorIds, {
+            includeNoneOption: true,
+            noneLabel: 'No tutor selected',
+            noneDescription: 'Leave tutor unassigned'
+          });
+          const nextPage = getPagedNavigationTarget(page, chosen);
+          const tutorSelect = buildPaginatedSelectMenu({
+            baseCustomId: `createad_tutor|${requester}|${levelKey}|${encodeURIComponent(subject)}`,
+            placeholder: 'Select tutor',
+            options: tutorOptions,
+            page: nextPage,
+            required: true
+          });
+          const rowTutor = new ActionRowBuilder().addComponents(tutorSelect);
+          const rows = Array.isArray(interaction.message?.components) && interaction.message.components.length > 0
+            ? [interaction.message.components[0], rowTutor]
+            : [rowTutor];
+          return interaction.update({ components: rows }).catch(() => {});
+        }
+
+        const selectedTutorId = chosen === 'none' ? null : chosen;
+        await handleOpenCreateAdModal(interaction, { requester, rawSubjectInput: subject, levelKeyFromModmail: levelKey, selectedTutorId });
         return;
       }
 
@@ -5061,11 +5118,26 @@ if (cmd === 'createad') {
       saveDB();
     } catch (e) { /* ignore */ }
 
-    // Category is chosen outside the modal to avoid Discord's 5-row modal limit.
-    // Subject and tutor are typed in the modal (resolveCanonicalSubject / resolveTutorInput).
+    // Now send a follow-up that asks for category first (University/A level/IGCSE/etc),
+    // then enables opening the modal. We do this outside the modal to avoid Discord's 5-row modal limit.
+    const levelOptions = [
+      new StringSelectMenuOptionBuilder().setLabel('University').setValue('university'),
+      new StringSelectMenuOptionBuilder().setLabel('A level').setValue('a_level'),
+      new StringSelectMenuOptionBuilder().setLabel('IGCSE').setValue('igcse'),
+      new StringSelectMenuOptionBuilder().setLabel('Below IGCSE').setValue('below_igcse'),
+      new StringSelectMenuOptionBuilder().setLabel('Language').setValue('language'),
+      new StringSelectMenuOptionBuilder().setLabel('Test Prep').setValue('test_prep'),
+      new StringSelectMenuOptionBuilder().setLabel('Other').setValue('other')
+    ];
+    const levelSelect = new StringSelectMenuBuilder()
+      .setCustomId(`createad_level|${interaction.user.id}`)
+      .setPlaceholder('Select subject level category')
+      .addOptions(levelOptions)
+      .setRequired(true);
+
     await interaction.followUp({
-      content: 'Ready — select the subject level category, then click **Open ad form** and type the subject name.',
-      components: buildCreateAdLevelFlowRows(interaction.user.id),
+      content: 'Ready — select the subject level category, then choose a subject to open the ad modal.',
+      components: [new ActionRowBuilder().addComponents(levelSelect)],
       ephemeral: true
     }).catch(() => {});
     return;
@@ -5679,7 +5751,7 @@ if (cmd === 'createad') {
 
             const migrateRow = new ActionRowBuilder().addComponents(
               new ButtonBuilder().setCustomId(`view_full_details|${adData.adCode || subject}`).setLabel('View Full Details').setStyle(ButtonStyle.Secondary),
-              buildAdEnquireButton(subject, { adCode: adData.adCode, messageId })
+              new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
             );
 
             // Do NOT ping tutors — tutor identities are kept secret
@@ -5960,24 +6032,10 @@ client.on('messageCreate', async (message) => {
           message.react(forwarded ? '✅' : '❌').catch(() => {});
         }
       } else {
+        // tutor, staff, or other wrote in ticket
         const authorId = String(message.author.id);
-        const staff = isStaff(message.member);
-
-        if (!staff) {
-          if (!ticket.approved) {
-            await message.delete().catch(() => {});
-            return;
-          }
-          const allowedTutors = new Set(getTicketAllowedTutorIds(ticket));
-          if (!allowedTutors.has(authorId)) {
-            await message.delete().catch(() => {});
-            const denyMsg = ticket.selectedTutorId
-              ? 'Only the tutor assigned to this enquiry can reply here.'
-              : 'Only tutors assigned to this subject or staff can reply here.';
-            const warn = await message.channel.send({ content: `<@${authorId}> ${denyMsg}` }).catch(() => null);
-            if (warn) setTimeout(() => warn.delete().catch(() => {}), 10000);
-            return;
-          }
+        // If this author is the selected tutor (and not staff), record as a tutor message
+        if (ticket.selectedTutorId && authorId === String(ticket.selectedTutorId) && !isStaff(message.member)) {
           ticket.tutorMap = ticket.tutorMap || {};
           ticket.tutorCount = ticket.tutorCount || 0;
           if (!ticket.tutorMap[authorId]) {
