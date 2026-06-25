@@ -28,12 +28,13 @@ Isofusie is a feature-rich Discord bot built for managing a tutoring community s
 - Closing a ticket triggers a modal to collect a closure reason and posts a full transcript
 
 ### 📢 Tutor Advertisement Management
-- Create rich-embed tutor ads with `/ad create` (select level category, then type subject and optional tutor in the ad form modal)
-- Edit existing ads with `/ad edit <messageId>` (modal pre-filled with current values)
-- Delete and archive ads with `/ad delete <messageId> <reason>`
+- Create rich-embed tutor ads with `/createad` (modal-based: subject, description, colour, level, tutor)
+- Edit existing ads with `/editad <messageId>` (modal pre-filled with current values)
+- Delete and archive ads with `/deletead <messageId> <reason>`
 - Ads are automatically organised into level-based category channels:
   - IGCSE Tutors, AS/A Level Tutors, Below IGCSE Tutors, University Tutors, Language Tutors, Test Prep Tutors, Other Tutors
-- "Talk to Tutor" button on each ad opens an enquiry ticket for that ad's tutor and subject
+- Migrate existing ads to category channels with `/migrateads`
+- "Talk to a tutor" button on each ad opens an enquiry ticket pre-filled with the relevant subject
 
 ### ⭐ Review System
 - Students receive a review prompt with a direct link after a ticket closes
