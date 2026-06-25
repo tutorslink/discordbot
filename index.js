@@ -4414,7 +4414,7 @@ client.on('interactionCreate', async (interaction) => {
 
           await interaction.followUp({
             content: 'Ready - select the subject level category, then click **Open ad form** and type the subject name.',
-            components: buildCreateAdLevelFlowRows(interaction.user.id),
+            //components: buildCreateAdLevelFlowRows(interaction.user.id),
             ephemeral: true
           }).catch(() => {});
           return;
